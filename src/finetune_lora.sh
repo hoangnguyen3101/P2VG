@@ -1,0 +1,63 @@
+#!/bin/bash
+
+# Script training cho mô hình SPINE với Gemma 3 4B + single encoder (Sagittal Wavelet Fused only)
+# Sử dụng DeepSpeed và các tham số tối ưu.dd
+# YÊU CẦU: conda env p2vg (transformers 5.3.0, PyTorch 2.6.0+cu124)
+#   conda activate p2vg
+# Tự động xác định thư mục P2VG root (parent của src/)
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+P2VG_ROOT="$(dirname "$SCRIPT_DIR")"
+cd "$P2VG_ROOT"
+echo "Working directory: $(pwd)"
+
+# Thêm path để load module LaMed và src
+export PYTHONPATH=$PYTHONPATH:$P2VG_ROOT:$P2VG_ROOT/M3D
+
+# Đường dẫn bộ lưu trữ cục bộ của người dùng
+DATA_ROOT="/home/hoangnv/AICD_HA/SPINE_BASE/P2VG/dataset_PKA"
+TRAIN_CSV="/home/hoangnv/AICD_HA/SPINE_BASE/P2VG/dataset_PKA/triplane_kfold/fold_3/train.csv"
+VAL_CSV="/home/hoangnv/AICD_HA/SPINE_BASE/P2VG/dataset_PKA/triplane_kfold/fold_3/val.csv"
+WEIGHTS_DIR="/home/hoangnv/AICD_HA/SPINE_BASE/SPINE/weights"
+DEEPSPEED_BIN="/home/hoangnv/miniconda3/envs/p2vg/bin/deepspeed"
+
+# Tối ưu hóa bộ nhớ CUDA
+export PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True
+
+# Sử dụng deepspeed launcher
+"$DEEPSPEED_BIN" src/custom_train.py \
+    --version v0 \
+    --model_name_or_path "google/medgemma-1.5-4b-it" \
+    --model_type gemma3 \
+    --lora_enable True \
+    --vision_tower vit3d \
+    --axt2_enable True \
+    --axial_only False \
+    --freeze_vision_tower True \
+    --pretrain_vision_model "$WEIGHTS_DIR/pretrained_ViT.bin" \
+    --pretrain_mm_mlp_adapter "$WEIGHTS_DIR/mm_projector.bin" \
+    --bf16 True \
+    --data_root "$DATA_ROOT" \
+    --amos_train_cap_data_path "$TRAIN_CSV" \
+    --amos_validation_cap_data_path "$VAL_CSV" \
+    --output_dir /storage/hoangnv/triplane_kfold/gemma3_pka_fused_gated_fold3 \
+    --num_train_epochs 10 \
+    --per_device_train_batch_size 1 \
+    --per_device_eval_batch_size 1 \
+    --gradient_accumulation_steps 8 \
+    --eval_strategy "epoch" \
+    --save_strategy "epoch" \
+    --save_total_limit 5 \
+    --load_best_model_at_end True \
+    --metric_for_best_model "loss" \
+    --greater_is_better False \
+    --learning_rate 2e-4 \
+    --weight_decay 0.01 \
+    --warmup_ratio 0.03 \
+    --lr_scheduler_type "cosine" \
+    --logging_steps 0.001 \
+    --gradient_checkpointing True \
+    --dataloader_pin_memory True \
+    --dataloader_num_workers 4 \
+    --sagittal_modality fused \
+    --report_to wandb \
+ 

@@ -1,0 +1,77 @@
+[nltk_data] Downloading package wordnet to /home/hoangnv/nltk_data...
+[nltk_data]   Package wordnet is already up-to-date!
+[nltk_data] Downloading package punkt_tab to
+[nltk_data]     /home/hoangnv/nltk_data...
+[nltk_data]   Package punkt_tab is already up-to-date!
+[nltk_data] Downloading package omw-1.4 to /home/hoangnv/nltk_data...
+[nltk_data]   Package omw-1.4 is already up-to-date!
+============================================================
+Loaded 47 samples from /storage/hoangnv/triplane_kfold/gemma3_pka_fused_gated_fold3/eval_results_54/eval_caption.csv
+============================================================
+
+>>> NLG Metrics
+----------------------------------------
+BLEU:        0.2874
+BLEU-1:      0.5941
+BLEU-2:      0.4571
+BLEU-3:      0.3568
+BLEU-4:      0.2874
+ROUGE-1:     0.6003
+ROUGE-L:     0.4600
+METEOR:      0.5140
+Loading weights:   0%|          | 0/389 [00:00<?, ?it/s]Loading weights: 100%|██████████| 389/389 [00:00<00:00, 11769.77it/s]
+[1mRobertaModel LOAD REPORT[0m from: roberta-large
+Key                             | Status     | 
+--------------------------------+------------+-
+lm_head.dense.weight            | UNEXPECTED | 
+lm_head.bias                    | UNEXPECTED | 
+roberta.embeddings.position_ids | UNEXPECTED | 
+lm_head.dense.bias              | UNEXPECTED | 
+lm_head.layer_norm.weight       | UNEXPECTED | 
+lm_head.layer_norm.bias         | UNEXPECTED | 
+pooler.dense.bias               | MISSING    | 
+pooler.dense.weight             | MISSING    | 
+
+[3mNotes:
+- UNEXPECTED[3m	:can be ignored when loading from different task/architecture; not ok if you expect identical arch.
+- MISSING[3m	:those params were newly initialized because missing from the checkpoint. Consider training on your downstream task.[0m
+Traceback (most recent call last):
+  File "/home/hoangnv/AICD_HA/SPINE_BASE/P2VG/src/eval_caption_metrics.py", line 771, in <module>
+    main()
+  File "/home/hoangnv/AICD_HA/SPINE_BASE/P2VG/src/eval_caption_metrics.py", line 733, in main
+    bert_result = bertscore.compute(
+  File "/home/hoangnv/miniconda3/envs/p2vg/lib/python3.10/site-packages/evaluate/module.py", line 467, in compute
+    output = self._compute(**inputs, **compute_kwargs)
+  File "/home/hoangnv/.cache/huggingface/modules/evaluate_modules/metrics/evaluate-metric--bertscore/cf4907b18f8f741f202232c0f8009a3bd49ff98802c245abcb6ea51a37a8c05b/bertscore.py", line 203, in _compute
+    (P, R, F) = self.cached_bertscorer.score(
+  File "/home/hoangnv/miniconda3/envs/p2vg/lib/python3.10/site-packages/bert_score/scorer.py", line 220, in score
+    all_preds = bert_cos_score_idf(
+  File "/home/hoangnv/miniconda3/envs/p2vg/lib/python3.10/site-packages/bert_score/utils.py", line 616, in bert_cos_score_idf
+    embs, masks, padded_idf = get_bert_embedding(
+  File "/home/hoangnv/miniconda3/envs/p2vg/lib/python3.10/site-packages/bert_score/utils.py", line 455, in get_bert_embedding
+    batch_embedding = bert_encode(
+  File "/home/hoangnv/miniconda3/envs/p2vg/lib/python3.10/site-packages/bert_score/utils.py", line 351, in bert_encode
+    out = model(x, attention_mask=attention_mask, output_hidden_states=all_layers)
+  File "/home/hoangnv/miniconda3/envs/p2vg/lib/python3.10/site-packages/torch/nn/modules/module.py", line 1739, in _wrapped_call_impl
+    return self._call_impl(*args, **kwargs)
+  File "/home/hoangnv/miniconda3/envs/p2vg/lib/python3.10/site-packages/torch/nn/modules/module.py", line 1750, in _call_impl
+    return forward_call(*args, **kwargs)
+  File "/home/hoangnv/miniconda3/envs/p2vg/lib/python3.10/site-packages/transformers/utils/generic.py", line 917, in wrapper
+    output = func(self, *args, **kwargs)
+  File "/home/hoangnv/miniconda3/envs/p2vg/lib/python3.10/site-packages/transformers/utils/output_capturing.py", line 253, in wrapper
+    outputs = func(self, *args, **kwargs)
+  File "/home/hoangnv/miniconda3/envs/p2vg/lib/python3.10/site-packages/transformers/models/roberta/modeling_roberta.py", line 666, in forward
+    pooled_output = self.pooler(sequence_output) if self.pooler is not None else None
+  File "/home/hoangnv/miniconda3/envs/p2vg/lib/python3.10/site-packages/torch/nn/modules/module.py", line 1739, in _wrapped_call_impl
+    return self._call_impl(*args, **kwargs)
+  File "/home/hoangnv/miniconda3/envs/p2vg/lib/python3.10/site-packages/torch/nn/modules/module.py", line 1750, in _call_impl
+    return forward_call(*args, **kwargs)
+  File "/home/hoangnv/miniconda3/envs/p2vg/lib/python3.10/site-packages/transformers/models/roberta/modeling_roberta.py", line 551, in forward
+    pooled_output = self.dense(first_token_tensor)
+  File "/home/hoangnv/miniconda3/envs/p2vg/lib/python3.10/site-packages/torch/nn/modules/module.py", line 1739, in _wrapped_call_impl
+    return self._call_impl(*args, **kwargs)
+  File "/home/hoangnv/miniconda3/envs/p2vg/lib/python3.10/site-packages/torch/nn/modules/module.py", line 1750, in _call_impl
+    return forward_call(*args, **kwargs)
+  File "/home/hoangnv/miniconda3/envs/p2vg/lib/python3.10/site-packages/torch/nn/modules/linear.py", line 125, in forward
+    return F.linear(input, self.weight, self.bias)
+KeyboardInterrupt

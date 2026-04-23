@@ -1,0 +1,85 @@
+# =============================================
+# .gitignore cho P2VG - Spine Captioning Project
+# =============================================
+
+# ---------- Log files ----------
+*.log
+
+# ---------- Text files ----------
+*.text
+
+# ---------- Heavy data files ----------
+# NIfTI medical image volumes (5-7MB each, hàng trăm files)
+*.nii
+*.nii.gz
+
+# HDF5 / NumPy data files
+*.h5
+*.hdf5
+*.npy
+*.npz
+
+# PDF files
+*.pdf
+
+# ---------- Dataset directories (rất nặng) ----------
+dataset_PKA/
+dataset_SPINED/
+dataset_sag/
+
+# ---------- Model checkpoints & weights ----------
+*.pt
+*.pth
+*.bin
+*.safetensors
+*.ckpt
+*.onnx
+
+# ---------- WandB logs ----------
+wandb/
+
+# ---------- Python artifacts ----------
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+*.egg-info/
+*.egg
+dist/
+build/
+.eggs/
+
+# ---------- Virtual environments ----------
+venv/
+.venv/
+env/
+
+# ---------- IDE / Editor ----------
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# ---------- PID files ----------
+*.pid
+
+# ---------- Jupyter ----------
+.ipynb_checkpoints/
+
+# ---------- OS generated ----------
+Thumbs.db
+.DS_Store
+
+# ---------- Misc heavy / temp ----------
+*.tar
+*.tar.gz
+*.zip
+*.7z
+*.rar
+*.iso
+
+# ---------- Scratch / temp ----------
+scratch/
+M3D/
