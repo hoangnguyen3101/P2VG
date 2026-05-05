@@ -4,8 +4,8 @@ import subprocess
 from glob import glob
 from multiprocessing import Pool
 
-INPUT_DIR = "/home/hoangnv/AICD_HA/SPINE_BASE/SPINE/dataset/MRI_Spine_SPIDER_Format_pka_fused"
-OUTPUT_DIR = "/home/hoangnv/AICD_HA/SPINE_BASE/P2VG/dataset_PKA"
+INPUT_DIR = "/storage/hoangnv/dataset_pka_ttd"
+OUTPUT_DIR = "/storage/hoangnv/dataset_pka_ttd_size"
 
 def process_subject(subject_id):
     try:

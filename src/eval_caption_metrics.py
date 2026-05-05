@@ -27,38 +27,23 @@ CONDITION_SPECS = {
     "disc_degeneration": {
         "description": "Disc degeneration, desiccation, or reduced T2 signal.",
     },
+    "spinal_stenosis": {
+        "description": "Central spinal canal stenosis or spinal stenosis.",
+    },
+    "osteophytes": {
+        "description": "Degenerative osteophytes/spurs.",
+    },
+    "nerve_compression": {
+        "description": "Nerve root compression, impingement, or contact.",
+    },
+    "curvature_abnormality": {
+        "description": "Abnormal spinal curvature or loss/reversal of normal lumbar lordosis.",
+    },
     "annular_tear": {
         "description": "Annular tear or annular fissure.",
     },
     "disc_height_loss": {
         "description": "Disc height loss, reduced disc height, or collapsed disc space.",
-    },
-    "spinal_stenosis": {
-        "description": "Central spinal canal stenosis or spinal stenosis.",
-    },
-    "foraminal_stenosis": {
-        "description": "Neural foraminal narrowing or foraminal stenosis.",
-    },
-    "lateral_recess_stenosis": {
-        "description": "Lateral recess stenosis or narrowing.",
-    },
-    "nerve_compression": {
-        "description": "Nerve root compression, impingement, or contact.",
-    },
-    "spondylolisthesis": {
-        "description": "Spondylolisthesis, anterolisthesis, or retrolisthesis.",
-    },
-    "compression_fracture": {
-        "description": "Vertebral compression fracture or compression deformity.",
-    },
-    "osteophytes": {
-        "description": "Degenerative osteophytes/spurs.",
-    },
-    "facet_arthropathy": {
-        "description": "Facet arthropathy, facet hypertrophy, or facet joint degeneration.",
-    },
-    "curvature_abnormality": {
-        "description": "Abnormal spinal curvature or loss/reversal of normal lumbar lordosis.",
     },
 }
 

@@ -14,9 +14,9 @@ echo "Working directory: $(pwd)"
 export PYTHONPATH=$PYTHONPATH:$P2VG_ROOT:$P2VG_ROOT/M3D
 
 # Đường dẫn bộ lưu trữ cục bộ của người dùng
-DATA_ROOT="/home/hoangnv/AICD_HA/SPINE_BASE/P2VG/dataset_PKA"
-TRAIN_CSV="/home/hoangnv/AICD_HA/SPINE_BASE/P2VG/dataset_PKA/triplane_kfold/fold_3/train.csv"
-VAL_CSV="/home/hoangnv/AICD_HA/SPINE_BASE/P2VG/dataset_PKA/triplane_kfold/fold_3/val.csv"
+DATA_ROOT="/storage/hoangnv/dataset_pka_ttd_size"
+TRAIN_CSV="/storage/hoangnv/dataset_pka_ttd_size/triplane_kfold/fold_2/train.csv"
+VAL_CSV="/storage/hoangnv/dataset_pka_ttd_size/triplane_kfold/fold_2/val.csv"
 WEIGHTS_DIR="/home/hoangnv/AICD_HA/SPINE_BASE/SPINE/weights"
 DEEPSPEED_BIN="/home/hoangnv/miniconda3/envs/p2vg/bin/deepspeed"
 
@@ -39,7 +39,7 @@ export PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True
     --data_root "$DATA_ROOT" \
     --amos_train_cap_data_path "$TRAIN_CSV" \
     --amos_validation_cap_data_path "$VAL_CSV" \
-    --output_dir /storage/hoangnv/triplane_kfold/gemma3_pka_fused_gated_fold3 \
+    --output_dir /storage/hoangnv/triplane_kfold/gemma3_pka_dynamic_fused_gated_fold2 \
     --num_train_epochs 10 \
     --per_device_train_batch_size 1 \
     --per_device_eval_batch_size 1 \

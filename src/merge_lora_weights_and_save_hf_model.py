@@ -160,6 +160,36 @@ def main():
 
         lamed_config = LamedGemma3Config(**config_dict)
         model = LamedGemma3ForCausalLM(lamed_config)
+
+        # Fix: Load and remap weights from multimodal checkpoint
+        import glob
+        from safetensors.torch import load_file
+        
+        if os.path.isdir(model_args.model_name_or_path):
+            model_path = model_args.model_name_or_path
+        else:
+            from huggingface_hub import snapshot_download
+            model_path = snapshot_download(
+                model_args.model_name_or_path,
+                cache_dir=training_args.cache_dir,
+            )
+        print(f"Loading base weights from: {model_path}")
+
+        shard_files = sorted(glob.glob(os.path.join(model_path, "*.safetensors")))
+        full_state_dict = {}
+        for shard in shard_files:
+            full_state_dict.update(load_file(shard, device="cpu"))
+
+        remapped = {}
+        for k, v in full_state_dict.items():
+            if k.startswith("language_model."):
+                new_key = k[len("language_model."):]
+                remapped[new_key] = v
+
+        model.load_state_dict(remapped, strict=False)
+        model.tie_weights()
+        print("Weights tied: lm_head ↔ embed_tokens")
+        del full_state_dict, remapped
     else:
         raise ValueError(f"Unknown Model Type {model_args.model_type}")
 

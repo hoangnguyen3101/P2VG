@@ -501,6 +501,7 @@ def main():
             "mm_projector",
             "embed_tokens",
             "lm_head",
+            "modal_fusion",
         ]
         # Optionally unfreeze vision tower
         if not model_args.freeze_vision_tower:
@@ -561,7 +562,7 @@ def main():
     )
     trainer.add_callback(MyCallback(trainer, tokenizer))
     # Thêm Early Stopping để tránh overfit
-    trainer.add_callback(transformers.EarlyStoppingCallback(early_stopping_patience=3))
+    trainer.add_callback(transformers.EarlyStoppingCallback(early_stopping_patience=2))
     
     trainer.train(resume_from_checkpoint=training_args.resume_from_checkpoint)
     trainer.save_state()
