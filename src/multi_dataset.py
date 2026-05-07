@@ -68,12 +68,17 @@ class SpineCapDataset(Dataset):
 
     def __load_sagittal_tensor(self, base_dir, sub_num):
         sagittal_modality = getattr(self.args, "sagittal_modality", "t1")
-        sagittal_path = os.path.join(base_dir, f"sub-{sub_num}_{sagittal_modality}.nii.gz")
-        if os.path.exists(sagittal_path):
-            return self.__nii_img_to_tensor(sagittal_path)
+        candidate_paths = [
+            os.path.join(base_dir, f"sub-{sub_num}_{sagittal_modality}.nii.gz"),
+            os.path.join(base_dir, f"{sub_num}_{sagittal_modality}.nii.gz"),
+        ]
+        for sagittal_path in candidate_paths:
+            if os.path.exists(sagittal_path):
+                return self.__nii_img_to_tensor(sagittal_path)
 
         raise FileNotFoundError(
-            f"Missing sagittal file ({sagittal_modality}) for sub-{sub_num} in {base_dir}"
+            f"Missing sagittal file ({sagittal_modality}) for sub-{sub_num} in {base_dir}. "
+            f"Tried: {candidate_paths}"
         )
 
     def __load_axt2_tensor(self, base_dir, sub_num, case_id):

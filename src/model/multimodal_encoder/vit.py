@@ -87,18 +87,13 @@ class ViT(nn.Module):
             raise ValueError("hidden_size should be divisible by num_heads.")
         self.hidden_size = hidden_size
         self.classification = classification
-        # MONAI 1.5.2 renamed pos_embed options:
-        # old: 'perceptron', 'conv' → new: 'learnable', 'sincos', 'none'
-        pos_embed_map = {'perceptron': 'learnable', 'conv': 'learnable'}
-        pos_embed_type = pos_embed_map.get(pos_embed, pos_embed)
-
         self.patch_embedding = PatchEmbeddingBlock(
             in_channels=in_channels,
             img_size=img_size,
             patch_size=patch_size,
             hidden_size=hidden_size,
             num_heads=num_heads,
-            pos_embed_type=pos_embed_type,
+            pos_embed=pos_embed,
             dropout_rate=dropout_rate,
             spatial_dims=spatial_dims,
         )

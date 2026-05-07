@@ -221,7 +221,29 @@ def main():
     print("=" * 20 + " Load weights with LoRA " + "=" * 20)
     print(f"Loading from: {model_args.model_with_lora}")
     state_dict = torch.load(model_args.model_with_lora, map_location="cpu")
-    missing, unexpected = model.load_state_dict(state_dict, strict=False)
+    # Strip PEFT prefixes only if they don't match the current model structure
+    # If the current model is a PeftModel, it expects base_model.model. prefix.
+    # If the checkpoint already has it, we don't strip it.
+    first_key = list(state_dict.keys())[0]
+    has_peft_prefix = first_key.startswith("base_model.model.")
+    
+    # Check if the model we are loading into is a PeftModel
+    is_peft_model = hasattr(model, "base_model")
+    
+    new_state_dict = {}
+    if has_peft_prefix and not is_peft_model:
+        # Strip if checkpoint has it but model doesn't (Inference case)
+        for k, v in state_dict.items():
+            new_state_dict[k.replace("base_model.model.", "")] = v
+    elif not has_peft_prefix and is_peft_model:
+        # Add if model has it but checkpoint doesn't
+        for k, v in state_dict.items():
+            new_state_dict["base_model.model." + k] = v
+    else:
+        # Both have it or both don't have it, load as is
+        new_state_dict = state_dict
+        
+    missing, unexpected = model.load_state_dict(new_state_dict, strict=False)
     if missing:
         print(f"[WARNING] Missing keys ({len(missing)}): {missing[:5]}...")
     if unexpected:

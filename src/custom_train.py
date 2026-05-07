@@ -600,14 +600,33 @@ class MyCallback(TrainerCallback):
         with torch.no_grad():
             for batch in vl:
                 gt = batch
+                input_ids = batch["input_ids"]
+                labels = batch["labels"]
+                pad_id = self._tok.pad_token_id
+                prompt_ids = []
+                prompt_masks = []
+
+                for sample_input_ids, sample_labels in zip(input_ids, labels):
+                    supervised = torch.nonzero(sample_labels != -100, as_tuple=False)
+                    prompt_len = supervised[0].item() if supervised.numel() > 0 else sample_input_ids.size(0)
+                    ids = sample_input_ids[:prompt_len]
+                    prompt_ids.append(ids)
+                    prompt_masks.append(torch.ones_like(ids))
+
+                max_prompt_len = max(ids.size(0) for ids in prompt_ids)
+                padded_prompt_ids = input_ids.new_full((len(prompt_ids), max_prompt_len), pad_id)
+                padded_prompt_masks = input_ids.new_zeros((len(prompt_ids), max_prompt_len))
+                for i, (ids, mask) in enumerate(zip(prompt_ids, prompt_masks)):
+                    padded_prompt_ids[i, :ids.size(0)] = ids
+                    padded_prompt_masks[i, :mask.size(0)] = mask
+
                 generation = self._trainer.model.generate(
                     batch["images"],
                     images_ax=batch.get("images_ax"),
-                    inputs=batch["input_ids"],
+                    inputs=padded_prompt_ids,
+                    attention_mask=padded_prompt_masks,
                     max_new_tokens=256,
-                    do_sample=True,
-                    top_p=0.9,
-                    temperature=1.0,
+                    do_sample=False,
                 )
                 break
 

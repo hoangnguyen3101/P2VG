@@ -14,9 +14,9 @@ echo "Working directory: $(pwd)"
 export PYTHONPATH=$PYTHONPATH:$P2VG_ROOT:$P2VG_ROOT/M3D
 
 # Đường dẫn bộ lưu trữ cục bộ của người dùng
-DATA_ROOT="/storage/hoangnv/dataset_pka_ttd_size"
-TRAIN_CSV="/storage/hoangnv/dataset_pka_ttd_size/triplane_kfold/fold_2/train.csv"
-VAL_CSV="/storage/hoangnv/dataset_pka_ttd_size/triplane_kfold/fold_2/val.csv"
+DATA_ROOT="/storage/hoangnv/dataset_spider_size"
+TRAIN_CSV="/storage/hoangnv/dataset_spider_size/kfold_splits/S1_composite_gpt/fold_5_image/train.csv"
+VAL_CSV="/storage/hoangnv/dataset_spider_size/kfold_splits/S1_composite_gpt/fold_5_image/val.csv"
 WEIGHTS_DIR="/home/hoangnv/AICD_HA/SPINE_BASE/SPINE/weights"
 DEEPSPEED_BIN="/home/hoangnv/miniconda3/envs/p2vg/bin/deepspeed"
 
@@ -24,13 +24,14 @@ DEEPSPEED_BIN="/home/hoangnv/miniconda3/envs/p2vg/bin/deepspeed"
 export PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True
 
 # Sử dụng deepspeed launcher
+# Previous LR: 5e-5
 "$DEEPSPEED_BIN" src/custom_train.py \
     --version v0 \
     --model_name_or_path "google/medgemma-1.5-4b-it" \
     --model_type gemma3 \
     --lora_enable True \
     --vision_tower vit3d \
-    --axt2_enable True \
+    --axt2_enable False \
     --axial_only False \
     --freeze_vision_tower True \
     --pretrain_vision_model "$WEIGHTS_DIR/pretrained_ViT.bin" \
@@ -39,8 +40,8 @@ export PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True
     --data_root "$DATA_ROOT" \
     --amos_train_cap_data_path "$TRAIN_CSV" \
     --amos_validation_cap_data_path "$VAL_CSV" \
-    --output_dir /storage/hoangnv/triplane_kfold/gemma3_pka_dynamic_fused_gated_fold2 \
-    --num_train_epochs 10 \
+    --output_dir /storage/hoangnv/triplane_kfold/gemma3_SPIDER_dynamic_fused_gated_fold5 \
+    --num_train_epochs 3 \
     --per_device_train_batch_size 1 \
     --per_device_eval_batch_size 1 \
     --gradient_accumulation_steps 8 \
@@ -50,7 +51,7 @@ export PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True
     --load_best_model_at_end True \
     --metric_for_best_model "loss" \
     --greater_is_better False \
-    --learning_rate 2e-4 \
+    --learning_rate 3e-5 \
     --weight_decay 0.01 \
     --warmup_ratio 0.03 \
     --lr_scheduler_type "cosine" \
@@ -59,5 +60,5 @@ export PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True
     --dataloader_pin_memory True \
     --dataloader_num_workers 4 \
     --sagittal_modality fused \
-    --report_to wandb \
+    --report_to wandb
  

@@ -1,0 +1,206 @@
+\documentclass[aspectratio=169]{beamer}
+
+\usepackage{fontspec}
+\usepackage{amsmath}
+\usepackage{booktabs}
+\usepackage{listings}
+\usepackage{xcolor}
+
+\usetheme{Madrid}
+\setmainfont{DejaVu Sans}
+\setsansfont{DejaVu Sans}
+\setmonofont{DejaVu Sans Mono}
+
+\definecolor{codebg}{RGB}{245,245,245}
+\lstset{
+  basicstyle=\ttfamily\scriptsize,
+  backgroundcolor=\color{codebg},
+  breaklines=true,
+  frame=single,
+  columns=fullflexible
+}
+
+\title{Cơ chế thay đổi kích thước ảnh PKA}
+\subtitle{\texttt{prepare\_all\_pka.py} và \texttt{prepare\_pka\_sample.py}}
+\author{P2VG preprocessing}
+\date{\today}
+
+\begin{document}
+
+\begin{frame}
+  \titlepage
+\end{frame}
+
+\begin{frame}{Mục tiêu tiền xử lý}
+  \begin{itemize}
+    \item Đưa các ảnh MRI PKA về định dạng thống nhất trước khi train model.
+    \item Chuẩn hóa spacing voxel về \((1.0, 1.0, 4.0)\) mm.
+    \item Chuẩn hóa kích thước mảng ảnh về \(256 \times 256 \times 32\).
+    \item Xử lý cả hai modality mặc định: \texttt{fused} và \texttt{axt2}.
+  \end{itemize}
+\end{frame}
+
+\begin{frame}{Vai trò của \texttt{prepare\_all\_pka.py}}
+  \begin{itemize}
+    \item File này không trực tiếp resize ảnh.
+    \item Nó tìm tất cả subject có file \texttt{sub-*\_fused.nii.gz}.
+    \item Với mỗi subject, nó gọi \texttt{prepare\_pka\_sample.py}.
+    \item Xử lý song song bằng \texttt{multiprocessing.Pool(8)}.
+  \end{itemize}
+
+  \vspace{0.4cm}
+  \begin{lstlisting}
+--mode preserve_axis
+--xy_size 256
+--depth_size 32
+  \end{lstlisting}
+\end{frame}
+
+\begin{frame}{Luồng xử lý tổng quát}
+  \begin{enumerate}
+    \item Đọc ảnh NIfTI bằng \texttt{nibabel}.
+    \item Lấy dữ liệu ảnh dạng \texttt{float32}.
+    \item Resample theo spacing mục tiêu.
+    \item Resize trục sâu về 32 slices.
+    \item Resize hai trục mặt phẳng ảnh về \(256 \times 256\).
+    \item Cập nhật affine để phản ánh spacing mới.
+    \item Lưu ảnh mới và file metadata JSON.
+  \end{enumerate}
+\end{frame}
+
+\begin{frame}{Bước 1: Resample theo spacing vật lý}
+  \texttt{prepare\_pka\_sample.py} lấy spacing cũ từ header:
+
+  \[
+    old\_zooms = (s_x, s_y, s_z)
+  \]
+
+  Spacing mục tiêu mặc định:
+
+  \[
+    target\_zooms = (1.0, 1.0, 4.0)
+  \]
+
+  Hệ số zoom được tính:
+
+  \[
+    zoom\_factors = \frac{old\_zooms}{target\_zooms}
+  \]
+
+  Sau đó nội suy tuyến tính:
+
+  \[
+    data' = zoom(data, zoom\_factors, order=1)
+  \]
+\end{frame}
+
+\begin{frame}{Ý nghĩa của resample spacing}
+  \begin{itemize}
+    \item Đây là bước chuẩn hóa theo kích thước voxel thật trong không gian vật lý.
+    \item Nếu voxel ban đầu dày/mỏng khác nhau, số voxel sau resample sẽ thay đổi.
+    \item Mục tiêu là để các ảnh có cùng độ phân giải vật lý xấp xỉ nhau.
+    \item \texttt{order=1} nghĩa là dùng nội suy tuyến tính, phù hợp cho ảnh MRI intensity.
+  \end{itemize}
+\end{frame}
+
+\begin{frame}{Bước 2: Chuẩn hóa depth về 32}
+  Sau khi resample spacing, script kiểm tra trục cuối:
+
+  \[
+    D = final\_data.shape[2]
+  \]
+
+  Nếu \(D \ne 32\), hệ số zoom theo depth là:
+
+  \[
+    depth\_zoom = \frac{32}{D}
+  \]
+
+  Và resize:
+
+  \[
+    final\_data = zoom(final\_data, (1.0, 1.0, depth\_zoom), order=1)
+  \]
+\end{frame}
+
+\begin{frame}{Bước 3: Chuẩn hóa mặt phẳng XY về 256}
+  Nếu chiều \(X\) hoặc \(Y\) chưa bằng 256:
+
+  \[
+    xy\_zoom_x = \frac{256}{X}
+  \]
+
+  \[
+    xy\_zoom_y = \frac{256}{Y}
+  \]
+
+  Sau đó resize:
+
+  \[
+    final\_data = zoom(final\_data, (xy\_zoom_x, xy\_zoom_y, 1.0), order=1)
+  \]
+
+  Trục depth lúc này được giữ nguyên.
+\end{frame}
+
+\begin{frame}{Vì sao cần cập nhật affine?}
+  \begin{itemize}
+    \item Khi thay đổi số voxel, spacing vật lý tương ứng cũng thay đổi.
+    \item Script tính lại:
+  \end{itemize}
+
+  \[
+    final\_zooms = target\_zooms \times
+    \frac{shape\_before\_normalize}{shape\_after\_normalize}
+  \]
+
+  \begin{itemize}
+    \item Sau đó affine được rescale bằng hàm \texttt{\_rescaled\_affine}.
+    \item Nhờ vậy file NIfTI đầu ra vẫn có thông tin không gian hợp lý.
+  \end{itemize}
+\end{frame}
+
+\begin{frame}{Hai chế độ xử lý}
+  \begin{table}
+    \centering
+    \begin{tabular}{lll}
+      \toprule
+      Chế độ & Cách xử lý & Khi dùng \\
+      \midrule
+      \texttt{canonical} & Đưa về orientation RAS rồi resample spacing & Chuẩn hóa hướng ảnh \\
+      \texttt{preserve\_axis} & Giữ thứ tự axis gốc, resample và resize & Đang dùng trong pipeline hiện tại \\
+      \bottomrule
+    \end{tabular}
+  \end{table}
+
+  \vspace{0.3cm}
+  \texttt{prepare\_all\_pka.py} gọi chế độ \texttt{preserve\_axis}.
+\end{frame}
+
+\begin{frame}{Kết quả đầu ra}
+  Với mỗi subject và modality, script lưu:
+
+  \begin{itemize}
+    \item File ảnh mới: \texttt{sub-XXXX\_fused.nii.gz}, \texttt{sub-XXXX\_axt2.nii.gz}.
+    \item Metadata JSON: mô tả shape, spacing, orientation trước và sau xử lý.
+  \end{itemize}
+
+  \vspace{0.3cm}
+  Kích thước mảng mục tiêu trong pipeline:
+
+  \[
+    256 \times 256 \times 32
+  \]
+\end{frame}
+
+\begin{frame}{Tóm tắt ngắn gọn}
+  \begin{itemize}
+    \item \texttt{prepare\_all\_pka.py}: chạy batch cho toàn bộ subject.
+    \item \texttt{prepare\_pka\_sample.py}: thực hiện resize/resample thật sự.
+    \item Đầu tiên chuẩn hóa spacing vật lý bằng nội suy tuyến tính.
+    \item Sau đó ép depth về 32 và XY về \(256 \times 256\).
+    \item Cuối cùng cập nhật affine và lưu metadata để kiểm tra lại.
+  \end{itemize}
+\end{frame}
+
+\end{document}

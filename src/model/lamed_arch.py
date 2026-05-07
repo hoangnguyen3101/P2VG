@@ -63,29 +63,12 @@ class LamedMetaModel:
 
         if model_args.pretrain_vision_model is not None:
             vision_model_weights = torch.load(model_args.pretrain_vision_model, map_location='cpu')
-
-            # MONAI 1.5.2 changed internal key names:
-            # - PatchEmbeddingBlock: 'patch_embeddings.1.' → 'patch_embeddings.'
-            # - TransformerBlock: added cross_attn layers (not in old pretrained weights)
-            # - Patch embedding: linear [768, 1024] → Conv3d [768, 1, 4, 16, 16]
-            remapped_vit = {}
-            for k, v in vision_model_weights.items():
-                new_k = k.replace('patch_embeddings.1.', 'patch_embeddings.')
-                # Old MONAI: linear weight [768, 1024] → new MONAI: Conv3d [768, C, D, H, W]
-                if 'patch_embeddings.weight' in new_k and v.dim() == 2:
-                    in_ch = self.config.image_channel  # 1
-                    pD, pH, pW = self.config.patch_size  # (4, 16, 16)
-                    v = v.reshape(v.shape[0], in_ch, pD, pH, pW)
-                remapped_vit[new_k] = v
-
-            missing, unexpected = self.vision_tower.vision_tower.load_state_dict(remapped_vit, strict=False)
-            print(f"[ViT Sagittal] Loaded pretrained weights. Missing: {len(missing)}, Unexpected: {len(unexpected)}")
-            if missing:
-                print(f"  Missing (new MONAI layers, will be random init): {missing[:5]}...")
+            self.vision_tower.vision_tower.load_state_dict(vision_model_weights, strict=True)
+            print("[ViT Sagittal] Loaded pretrained weights with strict=True")
 
             if self.axt2_enable:
-                missing_ax, _ = self.vision_tower_ax.vision_tower.load_state_dict(remapped_vit, strict=False)
-                print(f"[ViT Axial] Loaded pretrained weights. Missing: {len(missing_ax)}")
+                self.vision_tower_ax.vision_tower.load_state_dict(vision_model_weights, strict=True)
+                print("[ViT Axial] Loaded pretrained weights with strict=True")
 
         # mm_projector
         if getattr(self, 'mm_projector', None) is None:
@@ -212,7 +195,7 @@ class LamedMetaForCausalLM(ABC):
                 embed_tokens_weight = mm_projector_weights['model.embed_tokens.weight']
 
                 if input_embeddings.shape == embed_tokens_weight.shape:
-                    input_embeddings = embed_tokens_weight
+                    input_embeddings.copy_(embed_tokens_weight)
                 elif embed_tokens_weight.shape[0] == num_new_tokens:
                     input_embeddings[-num_new_tokens:] = embed_tokens_weight
                 else:

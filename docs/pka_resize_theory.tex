@@ -1,0 +1,186 @@
+\documentclass[aspectratio=169]{beamer}
+
+\usepackage{fontspec}
+\usepackage{amsmath}
+\usepackage{xcolor}
+
+\usetheme{Madrid}
+\setmainfont{DejaVu Sans}
+\setsansfont{DejaVu Sans}
+
+\title{Chuẩn hóa kích thước ảnh MRI trong PKA}
+\subtitle{Ý tưởng lý thuyết của resize và resampling}
+\author{P2VG preprocessing}
+\date{\today}
+
+\begin{document}
+
+\begin{frame}
+  \titlepage
+\end{frame}
+
+\begin{frame}{Vấn đề ban đầu}
+  Ảnh MRI từ nhiều bệnh nhân thường không đồng nhất:
+
+  \begin{itemize}
+    \item Số lát cắt khác nhau.
+    \item Kích thước mặt phẳng ảnh khác nhau.
+    \item Khoảng cách voxel khác nhau.
+    \item Hướng trục ảnh có thể không hoàn toàn giống nhau.
+  \end{itemize}
+
+  \vspace{0.3cm}
+  Nếu đưa trực tiếp vào model, các ảnh sẽ không có cùng hình dạng tensor và không cùng ý nghĩa không gian.
+\end{frame}
+
+\begin{frame}{Mục tiêu chuẩn hóa}
+  Mục tiêu là đưa mọi ảnh về một biểu diễn thống nhất:
+
+  \[
+    256 \times 256 \times 32
+  \]
+
+  \begin{itemize}
+    \item Hai chiều đầu là mặt phẳng ảnh.
+    \item Chiều cuối là số lát cắt theo chiều sâu.
+    \item Tất cả ảnh có cùng kích thước tensor để đưa vào mạng học sâu.
+  \end{itemize}
+\end{frame}
+
+\begin{frame}{Resize không chỉ là đổi số pixel}
+  Với ảnh y khoa 3D, mỗi voxel đại diện cho một thể tích thật trong cơ thể.
+
+  \begin{itemize}
+    \item Resize thông thường chỉ quan tâm đến kích thước mảng.
+    \item Resampling y khoa cần quan tâm thêm spacing vật lý.
+    \item Spacing cho biết mỗi voxel tương ứng bao nhiêu mm ngoài đời thật.
+  \end{itemize}
+
+  \vspace{0.3cm}
+  Vì vậy pipeline tách thành hai ý tưởng: chuẩn hóa spacing trước, rồi chuẩn hóa shape sau.
+\end{frame}
+
+\begin{frame}{Bước 1: Chuẩn hóa spacing}
+  Ảnh đầu vào có spacing ban đầu:
+
+  \[
+    (s_x, s_y, s_z)
+  \]
+
+  Spacing mục tiêu mặc định:
+
+  \[
+    (1.0,\ 1.0,\ 4.0)\ \text{mm}
+  \]
+
+  \begin{itemize}
+    \item Hai chiều trong mặt phẳng ảnh có độ phân giải 1 mm.
+    \item Chiều sâu có spacing 4 mm, phù hợp với dữ liệu lát cắt dày hơn.
+    \item Bước này giúp ảnh của các bệnh nhân có tỷ lệ không gian nhất quán hơn.
+  \end{itemize}
+\end{frame}
+
+\begin{frame}{Ý nghĩa của resampling}
+  Resampling là quá trình lấy mẫu lại ảnh trên một lưới voxel mới.
+
+  \begin{itemize}
+    \item Nếu spacing mới nhỏ hơn, số voxel có thể tăng lên.
+    \item Nếu spacing mới lớn hơn, số voxel có thể giảm đi.
+    \item Giá trị voxel mới được ước lượng từ các voxel lân cận.
+  \end{itemize}
+
+  \vspace{0.3cm}
+  Với ảnh MRI intensity, nội suy tuyến tính giúp giữ chuyển tiếp cường độ tương đối mượt.
+\end{frame}
+
+\begin{frame}{Bước 2: Chuẩn hóa số lát cắt}
+  Sau khi spacing đã được chuẩn hóa, số lát cắt vẫn có thể khác nhau.
+
+  \[
+    D \rightarrow 32
+  \]
+
+  \begin{itemize}
+    \item Nếu ảnh có nhiều hơn 32 lát, ảnh được nén theo chiều sâu.
+    \item Nếu ảnh có ít hơn 32 lát, ảnh được nội suy thêm lát trung gian.
+    \item Mục tiêu là mọi ảnh có cùng chiều depth để model xử lý ổn định.
+  \end{itemize}
+\end{frame}
+
+\begin{frame}{Bước 3: Chuẩn hóa mặt phẳng ảnh}
+  Hai chiều trong mặt phẳng được đưa về:
+
+  \[
+    H \times W \rightarrow 256 \times 256
+  \]
+
+  \begin{itemize}
+    \item Giúp mỗi lát cắt có cùng kích thước.
+    \item Giảm khác biệt giữa scanner, protocol và kích thước crop ban đầu.
+    \item Tạo tensor đầu vào cố định cho ViT 3D.
+  \end{itemize}
+\end{frame}
+
+\begin{frame}{Vì sao chọn \(256 \times 256 \times 32\)?}
+  Kích thước này là một thỏa hiệp giữa thông tin ảnh và chi phí tính toán.
+
+  \begin{itemize}
+    \item \(256 \times 256\): đủ chi tiết cho cấu trúc cột sống thắt lưng.
+    \item \(32\) lát: giữ thông tin 3D nhưng không làm bộ nhớ GPU quá lớn.
+    \item Kích thước cố định giúp batch training đơn giản và ổn định hơn.
+  \end{itemize}
+\end{frame}
+
+\begin{frame}{Giữ thứ tự trục ảnh}
+  Pipeline hiện tại dùng ý tưởng \textit{preserve axis}.
+
+  \begin{itemize}
+    \item Không ép ảnh về một orientation thế giới mới.
+    \item Giữ thứ tự trục mảng như dữ liệu đầu vào sau khi resize.
+    \item Phù hợp khi toàn bộ dataset đã có quy ước trục tương đối ổn định.
+  \end{itemize}
+
+  \vspace{0.3cm}
+  Điều này giúp tránh thay đổi bất ngờ vị trí tương đối của sagittal, axial và fused image.
+\end{frame}
+
+\begin{frame}{Vai trò của affine}
+  Affine mô tả quan hệ giữa tọa độ voxel và tọa độ vật lý.
+
+  \begin{itemize}
+    \item Khi resize ảnh, số voxel thay đổi.
+    \item Khi số voxel thay đổi, spacing hiệu dụng cũng thay đổi.
+    \item Do đó affine cần được cập nhật để metadata không bị sai.
+  \end{itemize}
+
+  \vspace{0.3cm}
+  Nói ngắn gọn: dữ liệu ảnh thay đổi thì thông tin không gian đi kèm cũng phải thay đổi.
+\end{frame}
+
+\begin{frame}{Tại sao cần cùng kích thước cho model?}
+  Mạng học sâu thường cần tensor đầu vào có shape cố định trong cùng batch.
+
+  \begin{itemize}
+    \item ViT 3D chia ảnh thành các patch 3D.
+    \item Kích thước ảnh cố định giúp số patch ổn định.
+    \item Số patch ổn định giúp projector và LLM nhận chuỗi image token nhất quán.
+  \end{itemize}
+
+  \vspace{0.3cm}
+  Vì vậy resize là bước cầu nối giữa ảnh MRI thô và mô hình vision-language.
+\end{frame}
+
+\begin{frame}{Tóm tắt}
+  Cơ chế thay đổi kích thước ảnh gồm ba ý chính:
+
+  \begin{enumerate}
+    \item Chuẩn hóa spacing để các voxel có ý nghĩa vật lý gần giống nhau.
+    \item Chuẩn hóa shape về \(256 \times 256 \times 32\) để model nhận input cố định.
+    \item Cập nhật thông tin không gian để file ảnh sau xử lý vẫn nhất quán.
+  \end{enumerate}
+
+  \vspace{0.3cm}
+  Đây không chỉ là resize ảnh, mà là chuẩn hóa biểu diễn không gian của dữ liệu MRI 3D.
+\end{frame}
+
+\end{document}
