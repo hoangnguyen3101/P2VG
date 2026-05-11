@@ -25,7 +25,12 @@ class SpineCapDataset(Dataset):
         df = pd.read_csv(csv_path)
         
         self.case_ids = df["case_id"].values
-        self.base_dirs = df["images_path"].values 
+        if "images_path" in df.columns:
+            self.base_dirs = df["images_path"].values
+        elif "image_path" in df.columns:
+            self.base_dirs = df["image_path"].values
+        else:
+            raise KeyError("Caption CSV must contain either 'images_path' or 'image_path'.")
         self.captions = df["Clinician's Notes"].values
 
     def __nii_img_to_tensor(self, path):
@@ -58,7 +63,11 @@ class SpineCapDataset(Dataset):
         return vol  # [1, D, H, W]
 
     def __is_preprocessed_pka(self, base_dir):
-        return "dataset_PKA" in os.path.abspath(base_dir)
+        abs_base_dir = os.path.abspath(base_dir)
+        return any(
+            token in abs_base_dir
+            for token in ["dataset_PKA", "dataset_ttd", "dataset_ttd_256"]
+        )
 
     def __resolve_base_dir(self, base_dir):
         base_dir = str(base_dir)
@@ -98,6 +107,22 @@ class SpineCapDataset(Dataset):
         dh, dw, dd = self.target_shape
         return torch.zeros((1, dd, dh, dw), dtype=torch.float32)
 
+    def __sample_udml_variance(self):
+        if self.mode != "train" or not getattr(self.args, "udml_noise_enable", False):
+            return 1.0
+        if random.random() > getattr(self.args, "udml_noise_prob", 0.5):
+            return 1.0
+        low = int(getattr(self.args, "udml_noise_min", 2))
+        high = int(getattr(self.args, "udml_noise_max", 12))
+        return float(random.randint(low, high))
+
+    def __apply_udml_noise(self, image, variance):
+        if variance <= 1.0:
+            return image
+        noise_std = float(variance) * float(getattr(self.args, "udml_noise_std_scale", 0.02))
+        noisy = image + torch.randn_like(image) * noise_std
+        return torch.clamp(noisy, 0.0, 1.0)
+
     def __len__(self):
         return len(self.case_ids)
 
@@ -118,6 +143,12 @@ class SpineCapDataset(Dataset):
                     image_sag = image_ax
                 else:
                     image_sag = self.__load_sagittal_tensor(base_dir, sub_num)
+
+                sag_noise_variance = self.__sample_udml_variance()
+                ax_noise_variance = self.__sample_udml_variance()
+                image_sag = self.__apply_udml_noise(image_sag, sag_noise_variance)
+                if getattr(self.args, "axt2_enable", False):
+                    image_ax = self.__apply_udml_noise(image_ax, ax_noise_variance)
                 
                 answer = self.captions[current_idx]
                 prompt_question = random.choice(Caption_templates)
@@ -162,6 +193,8 @@ class SpineCapDataset(Dataset):
                     "input_id": input_id,
                     "label": label,
                     "attention_mask": attention_mask,
+                    "sag_noise_variance": torch.tensor(sag_noise_variance, dtype=torch.float32),
+                    "ax_noise_variance": torch.tensor(ax_noise_variance, dtype=torch.float32),
                     "question": question,
                     "answer": answer,
                     "question_type": "Caption",

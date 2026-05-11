@@ -37,10 +37,28 @@ class LamedGemma3ForCausalLM(LamedMetaForCausalLM, Gemma3ForCausalLM):
     def get_model(self):
         return self.model
 
+    def _inputs_embeds_with_image_features(self, input_ids, image_features):
+        inputs_embeds = self.get_model().embed_tokens(input_ids)
+        return torch.cat(
+            (
+                inputs_embeds[:, :1, :],
+                image_features,
+                inputs_embeds[:, (image_features.shape[1] + 1):, :],
+            ),
+            dim=1,
+        )
+
+    def _extract_loss(self, outputs):
+        if hasattr(outputs, "loss"):
+            return outputs.loss
+        return outputs[0]
+
     def forward(
             self,
             images: Optional[torch.FloatTensor] = None,
             images_ax: Optional[torch.FloatTensor] = None,
+            sag_noise_variance: Optional[torch.FloatTensor] = None,
+            ax_noise_variance: Optional[torch.FloatTensor] = None,
             input_ids: torch.LongTensor = None,
             labels: Optional[torch.LongTensor] = None,
             attention_mask: Optional[torch.Tensor] = None,
@@ -54,6 +72,11 @@ class LamedGemma3ForCausalLM(LamedMetaForCausalLM, Gemma3ForCausalLM):
             return_dict: Optional[bool] = None,
             cache_position: Optional[torch.LongTensor] = None,
     ) -> Union[Tuple, CausalLMOutputWithPast]:
+
+        original_input_ids = input_ids
+        original_attention_mask = attention_mask
+        original_position_ids = position_ids
+        original_labels = labels
 
         if inputs_embeds is None:
             (
@@ -71,9 +94,11 @@ class LamedGemma3ForCausalLM(LamedMetaForCausalLM, Gemma3ForCausalLM):
                 labels,
                 images,
                 images_ax,
+                sag_noise_variance,
+                ax_noise_variance,
             )
 
-        return super().forward(
+        outputs = super().forward(
             input_ids=input_ids,
             attention_mask=attention_mask,
             position_ids=position_ids,
@@ -85,6 +110,62 @@ class LamedGemma3ForCausalLM(LamedMetaForCausalLM, Gemma3ForCausalLM):
             output_hidden_states=output_hidden_states,
             return_dict=return_dict,
         )
+        udml_aux_loss = getattr(self.get_model(), "udml_aux_loss", None)
+        if udml_aux_loss is not None and labels is not None:
+            if hasattr(outputs, "loss") and outputs.loss is not None:
+                outputs.loss = outputs.loss + udml_aux_loss
+            elif isinstance(outputs, tuple) and len(outputs) > 0:
+                outputs = (outputs[0] + udml_aux_loss,) + outputs[1:]
+
+        model = self.get_model()
+        aux_weight = getattr(model.config, "udml_lm_aux_loss_weight", 1.0)
+        use_lm_aux = (
+            getattr(model.config, "udml_lm_aux_enable", False)
+            and self.training
+            and original_labels is not None
+            and original_input_ids is not None
+            and getattr(model, "udml_sag_image_features", None) is not None
+            and getattr(model, "udml_ax_image_features", None) is not None
+        )
+        if use_lm_aux and aux_weight > 0:
+            sag_inputs_embeds = self._inputs_embeds_with_image_features(
+                original_input_ids,
+                model.udml_sag_image_features,
+            )
+            ax_inputs_embeds = self._inputs_embeds_with_image_features(
+                original_input_ids,
+                model.udml_ax_image_features,
+            )
+            sag_outputs = super().forward(
+                input_ids=None,
+                attention_mask=original_attention_mask,
+                position_ids=original_position_ids,
+                past_key_values=None,
+                inputs_embeds=sag_inputs_embeds,
+                labels=original_labels,
+                use_cache=False,
+                output_attentions=output_attentions,
+                output_hidden_states=output_hidden_states,
+                return_dict=True,
+            )
+            ax_outputs = super().forward(
+                input_ids=None,
+                attention_mask=original_attention_mask,
+                position_ids=original_position_ids,
+                past_key_values=None,
+                inputs_embeds=ax_inputs_embeds,
+                labels=original_labels,
+                use_cache=False,
+                output_attentions=output_attentions,
+                output_hidden_states=output_hidden_states,
+                return_dict=True,
+            )
+            lm_aux_loss = (self._extract_loss(sag_outputs) + self._extract_loss(ax_outputs)) * aux_weight
+            if hasattr(outputs, "loss") and outputs.loss is not None:
+                outputs.loss = outputs.loss + lm_aux_loss
+            elif isinstance(outputs, tuple) and len(outputs) > 0:
+                outputs = (outputs[0] + lm_aux_loss,) + outputs[1:]
+        return outputs
 
 
     @torch.no_grad()
@@ -116,6 +197,8 @@ class LamedGemma3ForCausalLM(LamedMetaForCausalLM, Gemma3ForCausalLM):
                 None,
                 images,
                 images_ax,
+                None,
+                None,
             )
         else:
             inputs_embeds = self.get_model().embed_tokens(inputs)

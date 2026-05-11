@@ -99,7 +99,7 @@ def find_all_linear_names(model):
     ignore_keywords = [
         "vision_tower",
         "vision_tower_ax",
-        "modal_fusion",
+        "udml_fusion",
         "mm_projector",
         "embed_tokens",
         "lm_head",

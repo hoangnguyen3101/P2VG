@@ -1,0 +1,262 @@
+\section{UDML Adaptation for P2VG}
+\label{sec:udml_p2vg}
+
+This section describes the UDML-style fusion module used to replace the original gated sagittal--axial fusion in P2VG. The formulation follows the released UDML implementation as closely as possible, while adapting the classification losses of UDML to language-model captioning losses.
+
+\subsection{Notation}
+
+For a training sample, let \(x_s\) and \(x_a\) denote the sagittal and axial MRI inputs. The two 3D vision encoders produce patch-token features
+\[
+    H_s = E_s(x_s) \in \mathbb{R}^{B \times N \times C_v},
+    \qquad
+    H_a = E_a(x_a) \in \mathbb{R}^{B \times N \times C_v},
+\]
+where \(C_v=768\). In MedGemma adapter mode, each view is spatially pooled and mapped into the native MedGemma visual-projection input space:
+\[
+    Z_s = A(P(H_s)) \in \mathbb{R}^{B \times N' \times C_m},
+    \qquad
+    Z_a = A(P(H_a)) \in \mathbb{R}^{B \times N' \times C_m},
+\]
+where \(P(\cdot)\) denotes spatial pooling, \(A(\cdot)\) is the learnable adapter, \(N'=256\), and \(C_m=1152\). The UDML fusion module operates on \(Z_s\) and \(Z_a\).
+
+\subsection{Controlled Noise and Variance Targets}
+
+During training, controlled Gaussian perturbation is optionally applied to each modality:
+\[
+    \tilde{x}_m
+    =
+    \operatorname{clip}(x_m + \epsilon_m, 0, 1),
+    \qquad
+    \epsilon_m \sim \mathcal{N}(0, \eta_m^2 I),
+    \qquad
+    m \in \{s,a\}.
+\]
+The sampled noise label is
+\[
+    \sigma_m \in \{1\} \cup \{\sigma_{\min}, \ldots, \sigma_{\max}\},
+\]
+and the perturbation standard deviation used in the image space is
+\[
+    \eta_m = \lambda_{\text{noise}}\sigma_m.
+\]
+If UDML noise is disabled, or if a sample is selected as clean, then \(\sigma_m=1\).
+
+\subsection{Noise-Aware Variance Estimation}
+
+The token features are pooled into view-level vectors:
+\[
+    \bar{z}_s = \frac{1}{N'}\sum_{i=1}^{N'} Z_{s,i},
+    \qquad
+    \bar{z}_a = \frac{1}{N'}\sum_{i=1}^{N'} Z_{a,i}.
+\]
+The modality uncertainty estimators predict positive scale values:
+\[
+    \hat{\sigma}_s
+    =
+    \operatorname{softplus}
+    \left(
+        g_s(\operatorname{stopgrad}(\bar{z}_s))
+    \right)
+    + \varepsilon,
+    \qquad
+    \hat{\sigma}_a
+    =
+    \operatorname{softplus}
+    \left(
+        g_a(\operatorname{stopgrad}(\bar{z}_a))
+    \right)
+    + \varepsilon.
+\]
+The stop-gradient operation follows UDML: the variance-estimation loss trains the estimator heads, while preventing this auxiliary objective from directly perturbing the vision encoders.
+
+The variance supervision loss is
+\[
+    \mathcal{L}_{\text{var}}
+    =
+    \lambda_{\text{var}}
+    \left[
+        \left\lVert \hat{\sigma}_s - \sigma_s \right\rVert_2^2
+        +
+        \left\lVert \hat{\sigma}_a - \sigma_a \right\rVert_2^2
+    \right].
+\]
+
+\subsection{Uncertainty-Based Target Weights}
+
+Following the released UDML implementation, inverse-uncertainty target weights are computed as
+\[
+    \tilde{w}_s
+    =
+    \frac{2\hat{\sigma}_a^2}
+         {\hat{\sigma}_s^2+\hat{\sigma}_a^2+\varepsilon},
+    \qquad
+    \tilde{w}_a
+    =
+    \frac{2\hat{\sigma}_s^2}
+         {\hat{\sigma}_s^2+\hat{\sigma}_a^2+\varepsilon}.
+\]
+Therefore, when sagittal uncertainty \(\hat{\sigma}_s\) increases, \(\tilde{w}_s\) decreases; when axial uncertainty \(\hat{\sigma}_a\) increases, \(\tilde{w}_a\) decreases.
+
+\subsection{Shared-Weight Dependency Calculator}
+
+To mimic the shared-weight auxiliary fusion in UDML, a single shared head \(q(\cdot)\) is applied to full and unimodal feature combinations:
+\[
+    r_{\text{full}} = q([\bar{z}_s;\bar{z}_a]),
+\]
+\[
+    r_s = q([\bar{z}_s;\mathbf{0}]),
+    \qquad
+    r_a = q([\mathbf{0};\bar{z}_a]).
+\]
+The parameters of \(q\) are reused for all three branches, analogous to the shared \(fc\_out\) layer in UDML's auxiliary fusion module.
+
+The dependency scores are computed from the magnitudes of the unimodal auxiliary responses:
+\[
+    \alpha_s
+    =
+    \sum_j
+    \left|
+        \frac{1}{B}\sum_{b=1}^{B} r_{s,bj}
+    \right|
+    + \varepsilon,
+    \qquad
+    \alpha_a
+    =
+    \sum_j
+    \left|
+        \frac{1}{B}\sum_{b=1}^{B} r_{a,bj}
+    \right|
+    + \varepsilon.
+\]
+This follows the released UDML code, where modality dependency is estimated from the magnitude of the corresponding unimodal auxiliary output.
+
+\subsection{Unbiased Dynamic Fusion}
+
+The uncertainty weights are corrected by the dependency scores:
+\[
+    u_s = \frac{\tilde{w}_s}{\alpha_s},
+    \qquad
+    u_a = \frac{\tilde{w}_a}{\alpha_a}.
+\]
+They are normalized to sum to \(2\), matching the two-modality normalization in UDML:
+\[
+    w_s
+    =
+    \frac{2u_s}{u_s+u_a+\varepsilon},
+    \qquad
+    w_a
+    =
+    \frac{2u_a}{u_s+u_a+\varepsilon}.
+\]
+The fused MedGemma-space visual tokens are
+\[
+    Z_f
+    =
+    \frac{1}{2}
+    \left(
+        w_s Z_s + w_a Z_a
+    \right).
+\]
+Since \(w_s+w_a \approx 2\), the factor \(1/2\) preserves feature scale.
+
+The fused tokens are passed through the pretrained MedGemma visual projection:
+\[
+    V_f
+    =
+    W_{\text{MG}}
+    \left(
+        \operatorname{RMSNorm}(Z_f)
+    \right)
+    \in \mathbb{R}^{B \times N' \times C_{\text{LLM}}},
+\]
+where \(C_{\text{LLM}}=2560\) for the MedGemma 4B text backbone.
+
+\subsection{Captioning Losses}
+
+Let \(y=(y_1,\ldots,y_T)\) be the target report tokens. The main language-model loss is
+\[
+    \mathcal{L}_{\text{full}}
+    =
+    -\sum_{t=1}^{T}
+    \log p_{\theta}
+    \left(
+        y_t
+        \mid
+        y_{<t}, V_f
+    \right).
+\]
+To adapt UDML's unimodal classification losses to report generation, sagittal-only and axial-only visual tokens are also projected through the same MedGemma projector and decoded by the same language model:
+\[
+    V_s
+    =
+    W_{\text{MG}}
+    \left(
+        \operatorname{RMSNorm}(Z_s)
+    \right),
+    \qquad
+    V_a
+    =
+    W_{\text{MG}}
+    \left(
+        \operatorname{RMSNorm}(Z_a)
+    \right).
+\]
+The auxiliary unimodal language-model losses are
+\[
+    \mathcal{L}_{s}
+    =
+    -\sum_{t=1}^{T}
+    \log p_{\theta}
+    \left(
+        y_t
+        \mid
+        y_{<t}, V_s
+    \right),
+\]
+\[
+    \mathcal{L}_{a}
+    =
+    -\sum_{t=1}^{T}
+    \log p_{\theta}
+    \left(
+        y_t
+        \mid
+        y_{<t}, V_a
+    \right).
+\]
+These two losses correspond to UDML's unimodal auxiliary losses, with causal language-model cross entropy replacing classification cross entropy.
+
+\subsection{Total Objective}
+
+The full training objective is
+\[
+    \mathcal{L}_{\text{total}}
+    =
+    \mathcal{L}_{\text{full}}
+    +
+    \mathcal{L}_{\text{var}}
+    +
+    \lambda_{\text{uni}}
+    \left(
+        \mathcal{L}_{s}
+        +
+        \mathcal{L}_{a}
+    \right).
+\]
+If unimodal LM supervision is disabled, then \(\lambda_{\text{uni}}=0\). If UDML noise supervision is disabled, the variance targets default to the clean value \(\sigma_s=\sigma_a=1\).
+
+\subsection{Relationship to UDML}
+
+The implementation preserves the main mechanisms of UDML:
+\[
+    \text{controlled noise}
+    \;+\;
+    \text{variance estimation}
+    \;+\;
+    \text{shared-weight dependency estimation}
+    \;+\;
+    \text{dependency-corrected dynamic fusion}
+    \;+\;
+    \text{full and unimodal task losses}.
+\]
+The task-specific adaptation is that UDML's classification cross entropy is replaced by causal language-model cross entropy for report generation.

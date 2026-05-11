@@ -108,6 +108,20 @@ class DataArguments:
         default="t1",
         metadata={"help": "Modality for sagittal images (t1, t2, fused)."}
     )
+    udml_noise_enable: bool = field(
+        default=False,
+        metadata={"help": "Inject controlled Gaussian noise for UDML uncertainty supervision."},
+    )
+    udml_noise_prob: float = field(default=0.5)
+    udml_noise_min: int = field(default=2)
+    udml_noise_max: int = field(default=12)
+    udml_noise_std_scale: float = field(default=0.02)
+    udml_var_loss_weight: float = field(default=0.1)
+    udml_lm_aux_enable: bool = field(
+        default=False,
+        metadata={"help": "Add sagittal-only and axial-only LM losses, analogous to UDML unimodal CE losses."},
+    )
+    udml_lm_aux_loss_weight: float = field(default=1.0)
 
     # VQA data
     vqa_data_train_path: str = field(
@@ -236,7 +250,7 @@ def safe_save_model_for_hf_trainer(trainer: transformers.Trainer, output_dir: st
 
     if getattr(trainer.args, "tune_mm_mlp_adapter", False):
         # Only save projector and embed_tokens in pretrain
-        keys_to_match = ["mm_projector", "embed_tokens"]
+        keys_to_match = ["mm_projector", "embed_tokens", "udml_fusion"]
 
         weight_to_save = get_mm_projector_state_maybe_zero_3(
             trainer.model.named_parameters(), keys_to_match
@@ -278,7 +292,7 @@ def find_all_linear_names(model):
     ignore_keywords = [
         "vision_tower",
         "vision_tower_ax",
-        "modal_fusion",
+        "udml_fusion",
         "mm_projector",
         "embed_tokens",
         "lm_head",
@@ -297,9 +311,17 @@ class DataCollator:
         pass
 
     def __call__(self, batch: list) -> dict:
-        images, image_ax, input_ids, labels, attention_mask = tuple(
+        images, image_ax, input_ids, labels, attention_mask, sag_noise_variance, ax_noise_variance = tuple(
             [b[key] for b in batch]
-            for key in ("image", "image_ax", "input_id", "label", "attention_mask")
+            for key in (
+                "image",
+                "image_ax",
+                "input_id",
+                "label",
+                "attention_mask",
+                "sag_noise_variance",
+                "ax_noise_variance",
+            )
         )
 
         images = torch.cat([_.unsqueeze(0) for _ in images], dim=0)
@@ -307,6 +329,8 @@ class DataCollator:
         input_ids = torch.cat([_.unsqueeze(0) for _ in input_ids], dim=0)
         labels = torch.cat([_.unsqueeze(0) for _ in labels], dim=0)
         attention_mask = torch.cat([_.unsqueeze(0) for _ in attention_mask], dim=0)
+        sag_noise_variance = torch.stack(sag_noise_variance, dim=0)
+        ax_noise_variance = torch.stack(ax_noise_variance, dim=0)
 
         return_dict = dict(
             images=images,
@@ -314,6 +338,8 @@ class DataCollator:
             input_ids=input_ids,
             labels=labels,
             attention_mask=attention_mask,
+            sag_noise_variance=sag_noise_variance,
+            ax_noise_variance=ax_noise_variance,
         )
 
         return return_dict
@@ -325,6 +351,11 @@ def main():
         (ModelArguments, DataArguments, TrainingArguments)
     )
     model_args, data_args, training_args = parser.parse_args_into_dataclasses()
+    data_args.axt2_enable = model_args.axt2_enable
+    data_args.axial_only = model_args.axial_only
+    model_args.udml_var_loss_weight = data_args.udml_var_loss_weight
+    model_args.udml_lm_aux_enable = data_args.udml_lm_aux_enable
+    model_args.udml_lm_aux_loss_weight = data_args.udml_lm_aux_loss_weight
 
     local_rank = training_args.local_rank
 
@@ -496,12 +527,18 @@ def main():
         rank0_print("Adding LoRA adapters only on LLM.")
         model = get_peft_model(model, lora_config)
 
+        if training_args.lora_weight_path:
+            ckpt = torch.load(training_args.lora_weight_path, map_location="cpu")
+            missing, unexpected = model.load_state_dict(ckpt, strict=False)
+            rank0_print(f"Loaded LoRA/start weights from {training_args.lora_weight_path}")
+            rank0_print(f"Missing keys: {len(missing)}, Unexpected keys: {len(unexpected)}")
+
         # Enable training for non-LLM components
         trainable_keywords = [
             "mm_projector",
             "embed_tokens",
             "lm_head",
-            "modal_fusion",
+            "udml_fusion",
         ]
         # Optionally unfreeze vision tower
         if not model_args.freeze_vision_tower:
