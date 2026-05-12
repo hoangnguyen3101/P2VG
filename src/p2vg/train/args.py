@@ -56,15 +56,6 @@ class ModelArguments:
     )
     proj_pooling_size: int = field(default=2, metadata={"help": "Size of pooling in projector."})
 
-    # UDML
-    udml_var_loss_weight: float = field(default=0.1)
-    udml_lm_aux_enable: bool = field(
-        default=False,
-        metadata={"help": "Add sagittal-only and axial-only LM losses analogous to UDML unimodal CE losses."},
-    )
-    udml_lm_aux_loss_weight: float = field(default=1.0)
-
-
 @dataclass
 class DataArguments:
     data_root: str = field(
