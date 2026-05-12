@@ -26,6 +26,8 @@
 dataset_PKA/
 dataset_SPINED/
 dataset_sag/
+dataset_spined/
+S1_composite_grok/
 
 # ---------- Model checkpoints & weights ----------
 *.pt
@@ -87,6 +89,9 @@ scratch/
 Baocao/
 dataset_disease_frequency.json
 scripts/
+UDML.tex
+Unbiased Dynamic Multimodal Fusion.md
+wavelet_fusion_tool.py
 src/check_nifti.py
 src/count_diseases.py
 src/finetune_spider.sh
