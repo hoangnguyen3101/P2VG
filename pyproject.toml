@@ -13,6 +13,7 @@ dependencies = [
     "peft",
     "deepspeed",
     "safetensors",
+    "monai",
     "nibabel",
     "pandas",
     "numpy",
