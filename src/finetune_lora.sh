@@ -1,7 +1,8 @@
 #!/bin/bash
+set -euo pipefail
 
 # Train P2VG on the normalized TTD dataset:
-#   /storage/hoangnv/dataset_ttd_256
+#   DATA_ROOT=/path/to/dataset_ttd_256 bash src/finetune_lora.sh
 #
 # Expected files:
 #   report/train.csv
@@ -15,15 +16,27 @@ echo "Working directory: $(pwd)"
 
 export PYTHONPATH=$PYTHONPATH:$P2VG_ROOT:$P2VG_ROOT/M3D
 
-DATA_ROOT="/storage/hoangnv/dataset_ttd_256"
+DATA_ROOT="${DATA_ROOT:-/storage/hoangnv/dataset_ttd_256}"
 TRAIN_CSV="$DATA_ROOT/report/train.csv"
 VAL_CSV="$DATA_ROOT/report/val.csv"
-WEIGHTS_DIR="/home/hoangnv/AICD_HA/SPINE_BASE/SPINE/weights"
-DEEPSPEED_BIN="/home/hoangnv/miniconda3/envs/p2vg/bin/deepspeed"
+WEIGHTS_DIR="$P2VG_ROOT/weights"
+OUTPUT_DIR="${OUTPUT_DIR:-/storage/hoangnv/PKA_UMDL/gemma3_TTD256_fused_axt2_ep5}"
+DEEPSPEED_BIN="${DEEPSPEED_BIN:-deepspeed}"
+
+if [ ! -f "$TRAIN_CSV" ] || [ ! -f "$VAL_CSV" ]; then
+    echo "Missing dataset CSV files under DATA_ROOT=$DATA_ROOT" >&2
+    echo "Expected: $TRAIN_CSV and $VAL_CSV" >&2
+    exit 1
+fi
+
+if [ ! -f "$WEIGHTS_DIR/pretrained_ViT.bin" ]; then
+    echo "Missing pretrained ViT: $WEIGHTS_DIR/pretrained_ViT.bin" >&2
+    exit 1
+fi
 
 export PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True
-export WANDB_PROJECT="PKA_UMDL"
-export WANDB_NAME="gemma3_TTD256_fused_axt2_ep5"
+export WANDB_PROJECT="${WANDB_PROJECT:-PKA_UMDL}"
+export WANDB_NAME="${WANDB_NAME:-gemma3_TTD256_fused_axt2_ep5}"
 
 "$DEEPSPEED_BIN" src/custom_train.py \
     --version v0 \
@@ -39,7 +52,7 @@ export WANDB_NAME="gemma3_TTD256_fused_axt2_ep5"
     --data_root "$DATA_ROOT" \
     --amos_train_cap_data_path "$TRAIN_CSV" \
     --amos_validation_cap_data_path "$VAL_CSV" \
-    --output_dir /storage/hoangnv/PKA_UMDL/gemma3_TTD256_fused_axt2_ep5 \
+    --output_dir "$OUTPUT_DIR" \
     --num_train_epochs 5 \
     --per_device_train_batch_size 1 \
     --per_device_eval_batch_size 1 \

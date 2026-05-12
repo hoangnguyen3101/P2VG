@@ -36,6 +36,8 @@ S1_composite_grok/
 *.safetensors
 *.ckpt
 *.onnx
+!weights/
+!weights/README.md
 
 # ---------- WandB logs ----------
 wandb/

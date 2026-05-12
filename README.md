@@ -74,6 +74,14 @@ gdown --id 1JC48AF33eIlq-sTxG54NTJZfjQqE4tXs -O dataset_ttd_256.zip
 unzip dataset_ttd_256.zip
 ```
 
+Cập nhật đường dẫn dữ liệu trong `src/finetune_lora.sh` theo thư mục vừa giải nén:
+
+```bash
+DATA_ROOT="/path/to/dataset_ttd_256"
+TRAIN_CSV="$DATA_ROOT/report/train.csv"
+VAL_CSV="$DATA_ROOT/report/val.csv"
+```
+
 ## Weights Cần Có
 
 Script train giả định đã có pretrained visual weights cục bộ:
@@ -96,8 +104,12 @@ Base language model thường dùng là `google/medgemma-1.5-4b-it`. Với MedGe
 Launcher chính được giữ ở:
 
 ```bash
+DATA_ROOT=/path/to/dataset_ttd_256 \
+OUTPUT_DIR=/path/to/output/gemma3_TTD256_fused_axt2_ep5 \
 bash src/finetune_lora.sh
 ```
+
+Script dùng `weights/pretrained_ViT.bin` trong repo hiện tại. Khi `deepspeed` không nằm trong `PATH`, truyền thêm `DEEPSPEED_BIN=/path/to/deepspeed`.
 
 Lệnh DeepSpeed tối giản:
 
