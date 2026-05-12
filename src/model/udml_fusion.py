@@ -29,8 +29,8 @@ class UDMLFusion(nn.Module):
         sag_pool = feat_sag.mean(dim=1)
         ax_pool = feat_ax.mean(dim=1)
 
-        sag_scale = F.softplus(self.sag_variance_estimator(sag_pool.detach())) + self.eps
-        ax_scale = F.softplus(self.ax_variance_estimator(ax_pool.detach())) + self.eps
+        sag_scale = (self.sag_variance_estimator(sag_pool.detach()) * 0.5).exp() + self.eps
+        ax_scale = (self.ax_variance_estimator(ax_pool.detach()) * 0.5).exp() + self.eps
 
         denom = sag_scale.square() + ax_scale.square() + self.eps
         target_weight_sag = 2.0 * ax_scale.square() / denom
