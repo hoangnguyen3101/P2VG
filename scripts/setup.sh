@@ -52,12 +52,56 @@ print("Imports OK")
 PYEOF
 ok "Core imports work"
 
-# ── 4. Required files / directories ───────────────
+# ── 4. Fix dataset CSV paths ──────────────────────
 echo ""
-echo ">>> [4/5] Checking required files..."
+echo ">>> [4/6] Fixing dataset CSV paths (absolute → relative)..."
+
+DATA_ROOT="${DATA_ROOT:-$P2VG_ROOT/dataset_ttd_256}"
+
+uv run python - "$DATA_ROOT" <<'PYEOF'
+import csv, re, sys, pathlib
+
+data_root = pathlib.Path(sys.argv[1])
+report_dir = data_root / "report"
+
+if not report_dir.exists():
+    print(f"  report/ not found at {report_dir} — skipping (unzip dataset first)")
+    sys.exit(0)
+
+abs_pattern = re.compile(r"^.*/dataset_ttd_256/Volume")
+
+for csv_path in sorted(report_dir.glob("*.csv")):
+    rows = list(csv.DictReader(open(csv_path, newline="", encoding="utf-8-sig")))
+    if not rows:
+        continue
+
+    needs_fix = any(
+        abs_pattern.match(str(row.get("image_path", ""))) or
+        abs_pattern.match(str(row.get("missing_axt2_path", "")))
+        for row in rows
+    )
+    if not needs_fix:
+        print(f"  {csv_path.name}: already clean")
+        continue
+
+    for row in rows:
+        for col in ("image_path", "missing_axt2_path"):
+            if col in row and row[col]:
+                row[col] = abs_pattern.sub("Volume", row[col])
+
+    with open(csv_path, "w", newline="", encoding="utf-8") as f:
+        writer = csv.DictWriter(f, fieldnames=rows[0].keys())
+        writer.writeheader()
+        writer.writerows(rows)
+    print(f"  {csv_path.name}: fixed")
+PYEOF
+ok "CSV paths checked"
+
+# ── 5. Required files / directories ───────────────
+echo ""
+echo ">>> [5/6] Checking required files..."
 
 WEIGHTS_DIR="${WEIGHTS_DIR:-$P2VG_ROOT/weights}"
-DATA_ROOT="${DATA_ROOT:-$P2VG_ROOT/dataset_ttd_256}"
 
 if [ -f "$WEIGHTS_DIR/pretrained_ViT.bin" ]; then
     ok "pretrained_ViT.bin found at $WEIGHTS_DIR"
@@ -77,9 +121,9 @@ for split in train val test; do
     fi
 done
 
-# ── 5. PM2 (optional, for background jobs) ────────
+# ── 6. PM2 (optional, for background jobs) ────────
 echo ""
-echo ">>> [5/5] Checking PM2 (optional)..."
+echo ">>> [6/6] Checking PM2 (optional)..."
 if command -v pm2 &>/dev/null; then
     ok "PM2 $(pm2 --version) found"
 else
