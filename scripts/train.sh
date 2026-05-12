@@ -11,6 +11,8 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 P2VG_ROOT="$(dirname "$SCRIPT_DIR")"
 cd "$P2VG_ROOT"
 
+err() { echo "[ERR] $*" >&2; }
+
 export PYTHONPATH="$P2VG_ROOT/src:$P2VG_ROOT/M3D${PYTHONPATH:+:$PYTHONPATH}"
 export PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True
 export CUDA_VISIBLE_DEVICES=1
@@ -20,7 +22,11 @@ OUTPUT_SUFFIX="${2:-}"
 
 DATA_ROOT="${DATA_ROOT:-$P2VG_ROOT/dataset_ttd_256}"
 WEIGHTS_DIR="${WEIGHTS_DIR:-$P2VG_ROOT/weights}"
-DEEPSPEED_BIN="${DEEPSPEED_BIN:-$(which deepspeed)}"
+DEEPSPEED_BIN="${DEEPSPEED_BIN:-$(uv run which deepspeed 2>/dev/null || which deepspeed 2>/dev/null || echo '')}"
+if [ -z "$DEEPSPEED_BIN" ]; then
+    err "deepspeed not found. Run: uv sync"
+    exit 1
+fi
 TRAIN_CSV="${TRAIN_CSV:-$DATA_ROOT/report/train.csv}"
 VAL_CSV="${VAL_CSV:-$DATA_ROOT/report/val.csv}"
 OUTPUT_DIR="$P2VG_ROOT/outputs/fold${FOLD}${OUTPUT_SUFFIX}"
