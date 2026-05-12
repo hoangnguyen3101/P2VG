@@ -90,7 +90,6 @@ scratch/
 # ---------- Local scripts & reports (Requested) ----------
 Baocao/
 dataset_disease_frequency.json
-scripts/
 UDML.tex
 Unbiased Dynamic Multimodal Fusion.md
 wavelet_fusion_tool.py
