@@ -103,11 +103,21 @@ echo ">>> [5/6] Checking required files..."
 
 WEIGHTS_DIR="${WEIGHTS_DIR:-$P2VG_ROOT/weights}"
 
+mkdir -p "$WEIGHTS_DIR"
 if [ -f "$WEIGHTS_DIR/pretrained_ViT.bin" ]; then
     ok "pretrained_ViT.bin found at $WEIGHTS_DIR"
 else
-    warn "pretrained_ViT.bin NOT found at $WEIGHTS_DIR"
-    warn "  → Place it there before running training."
+    warn "pretrained_ViT.bin NOT found — downloading from HuggingFace..."
+    if command -v hf &>/dev/null; then
+        hf download GoodBaiBai88/M3D-CLIP pretrained_ViT.bin --local-dir "$WEIGHTS_DIR"
+        ok "pretrained_ViT.bin downloaded"
+    elif command -v uv &>/dev/null; then
+        uv run huggingface-cli download GoodBaiBai88/M3D-CLIP pretrained_ViT.bin --local-dir "$WEIGHTS_DIR"
+        ok "pretrained_ViT.bin downloaded"
+    else
+        warn "  → Neither 'hf' nor 'huggingface-cli' found. Download manually:"
+        warn "  → hf download GoodBaiBai88/M3D-CLIP pretrained_ViT.bin --local-dir $WEIGHTS_DIR"
+    fi
 fi
 
 for split in train val test; do
