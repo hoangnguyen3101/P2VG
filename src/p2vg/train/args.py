@@ -118,5 +118,6 @@ class TrainingArguments(transformers.TrainingArguments):
 
     # training
     cache_dir: Optional[str] = field(default=None)
+    resume_from_checkpoint: Optional[str] = field(default=None)
     model_max_length: int = field(default=512)
     remove_unused_columns: bool = field(default=False)

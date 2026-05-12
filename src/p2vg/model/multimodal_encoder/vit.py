@@ -150,7 +150,7 @@ class ViT3DTower(nn.Module):
         if self.select_layer == -1:
             image_features = last_feature
         elif self.select_layer < -1:
-            image_features = hidden_states[self.select_feature]
+            image_features = hidden_states[self.select_layer]
         else:
             raise ValueError(f'Unexpected select layer: {self.select_layer}')
 

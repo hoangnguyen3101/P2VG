@@ -59,7 +59,7 @@ def get_mm_projector_state_maybe_zero_3(named_params, keys_to_match):
 
 
 def safe_save_model_for_hf_trainer(trainer: transformers.Trainer, output_dir: str):
-    if getattr(trainer.args, "tune_mm_mlp_adapter", False):
+    if getattr(trainer.model.config, "tune_mm_mlp_adapter", False):
         keys_to_match = ["mm_projector", "embed_tokens", "udml_fusion"]
         weight_to_save = get_mm_projector_state_maybe_zero_3(
             trainer.model.named_parameters(), keys_to_match

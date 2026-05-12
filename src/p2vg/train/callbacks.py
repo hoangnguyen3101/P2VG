@@ -14,11 +14,16 @@ class EvalGenerationCallback(TrainerCallback):
         logger.info("Running generation evaluation...")
         vl = self._trainer.get_eval_dataloader()
 
+        device = next(self._trainer.model.parameters()).device
         self._trainer.model.eval()
         gt = None
         with torch.no_grad():
             for batch in vl:
                 gt = batch
+                batch = {
+                    k: v.to(device) if isinstance(v, torch.Tensor) else v
+                    for k, v in batch.items()
+                }
                 input_ids = batch["input_ids"]
                 labels = batch["labels"]
                 pad_id = self._tok.pad_token_id
