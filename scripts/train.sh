@@ -58,7 +58,7 @@ echo "OUTPUT_DIR : $OUTPUT_DIR"
     --axial_only False \
     --freeze_vision_tower True \
     --pretrain_vision_model "$WEIGHTS_DIR/pretrained_ViT.bin" \
-    --bf16 True \
+    --bf16 False \
     --data_root "$DATA_ROOT" \
     --amos_train_cap_data_path "$TRAIN_CSV" \
     --amos_validation_cap_data_path "$VAL_CSV" \
