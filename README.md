@@ -66,6 +66,14 @@ dataset_ttd_256/
     sub-0001_axt2.nii.gz
 ```
 
+Tải dữ liệu TTD đã chuẩn bị bằng `gdown`:
+
+```bash
+pip install gdown
+gdown --id 1JC48AF33eIlq-sTxG54NTJZfjQqE4tXs -O dataset_ttd_256.zip
+unzip dataset_ttd_256.zip
+```
+
 ## Weights Cần Có
 
 Script train giả định đã có pretrained visual weights cục bộ:
@@ -73,6 +81,12 @@ Script train giả định đã có pretrained visual weights cục bộ:
 ```text
 weights/
   pretrained_ViT.bin
+```
+
+Tải pretrained ViT từ Hugging Face:
+
+```text
+https://huggingface.co/GoodBaiBai88/M3D-CLIP/blob/main/pretrained_ViT.bin
 ```
 
 Base language model thường dùng là `google/medgemma-1.5-4b-it`. Với MedGemma adapter mode, pretrained visual projector được tái sử dụng trực tiếp từ checkpoint MedGemma, nên path train hiện tại không cần `mm_projector.bin` riêng. Nếu model chưa có trong cache local, cần cấu hình quyền truy cập Hugging Face trước.
@@ -170,7 +184,7 @@ File kết quả sinh ra là:
 
 ## Đánh Giá
 
-Chạy đánh giá caption metric trên CSV đã sinh. Script cần API key của Groq/Grok; có thể truyền bằng biến môi trường `GROQ_API_KEY` hoặc flag `--llm_api_key`.
+Chạy đánh giá caption metric trên CSV đã sinh. Script cần API key của Groq/Grok; truyền bằng biến môi trường `GROQ_API_KEY` hoặc flag `--llm_api_key`.
 
 ```bash
 export GROQ_API_KEY="your_api_key_here"
@@ -185,6 +199,5 @@ Xem `python src/eval_caption_metrics.py --help` để biết chính xác các tu
 
 ## Ghi Chú
 
-- Script hiện có một số path theo máy hiện tại như `/storage/hoangnv` và `/home/hoangnv`; cần sửa lại nếu chạy trên máy khác.
+- Script hiện có một số path theo máy hiện tại như `/storage/hoangnv` và `/home/hoangnv`; cần sửa lại để phù hợp hơn với máy của bạn
 - Để import ổn định, nên chạy từ repo root hoặc set `PYTHONPATH` như hướng dẫn phía trên.
-- Nếu thiếu CUDA memory, giữ `per_device_train_batch_size=1`, dùng gradient accumulation, và set `PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True`.
