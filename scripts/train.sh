@@ -70,7 +70,7 @@ echo "OUTPUT_DIR : $OUTPUT_DIR"
     --udml_noise_std_scale 0.02 \
     --udml_var_loss_weight 0.1 \
     --output_dir "$OUTPUT_DIR" \
-    --num_train_epochs 5 \
+    --num_train_epochs 50 \
     --per_device_train_batch_size 1 \
     --per_device_eval_batch_size 1 \
     --gradient_accumulation_steps 8 \
