@@ -118,6 +118,4 @@ class TrainingArguments(transformers.TrainingArguments):
 
     # training
     model_max_length: int = field(default=512)
-    tune_mm_mlp_adapter: bool = field(default=False)
-    resume_from_checkpoint: Optional[str] = field(default=None)
     remove_unused_columns: bool = field(default=False)
