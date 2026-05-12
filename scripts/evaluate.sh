@@ -36,6 +36,8 @@ uv run python scripts/demo_csv.py \
     --sagittal_modality fused
 
 # Step 2: compute metrics
+LLM_MODEL="${LLM_MODEL:-llama-3.3-70b-versatile}"
 uv run python scripts/eval_captions.py \
     --input_csv "$OUTPUT_DIR/eval_caption.csv" \
-    --output_csv "$OUTPUT_DIR/eval_scores.csv"
+    --output_csv "$OUTPUT_DIR/eval_scores.csv" \
+    --llm_model "$LLM_MODEL"
