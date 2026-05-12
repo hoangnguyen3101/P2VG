@@ -1,72 +1,64 @@
-# P2VG DynamicFusion
+# P2VG — Spine MRI Captioning with UDML Dynamic Fusion
 
-Branch `dynamicfusion` dùng để fine-tune mô hình captioning y khoa 3D cho MRI cột sống, dựa trên MedGemma/Gemma3. Branch này thêm nhánh hai góc nhìn cho ảnh sagittal và axial T2, đồng thời bổ sung module dynamic fusion theo hướng UDML để ước lượng độ bất định của từng modality và trộn visual tokens trước khi sinh báo cáo.
+Branch `dynamicfusion` fine-tunes MedGemma/Gemma3 cho bài toán sinh báo cáo MRI cột sống 3D.
+Pipeline bao gồm hai nhánh visual (sagittal + axial T2) và module UDML fusion để ước lượng độ bất định của từng modality, từ đó tính trọng số trộn adaptive trước khi sinh báo cáo.
 
-## Thành Phần Chính
+## Cấu Trúc Dự Án
 
-- `src/custom_train.py`: entrypoint train cho MedGemma/Gemma3 + ViT3D + LoRA.
-- `src/model/udml_fusion.py`: module fusion động giữa sagittal/axial với variance supervision.
-- `src/model/lamed_arch.py`: logic forward/generation multimodal, có hỗ trợ nhánh axial.
-- `src/multi_dataset.py`: dataset loader cho NIfTI volumes và CSV báo cáo.
-- `src/merge_lora_weights_and_save_hf_model.py`: merge LoRA/trainable weights thành thư mục model kiểu Hugging Face.
-- `src/demo_csv.py`: chạy caption generation trên một split CSV và ghi `eval_caption.csv`.
-- `src/eval_caption_metrics.py`: tính metric caption từ CSV kết quả sinh ra.
+```
+P2VG/
+├── src/p2vg/
+│   ├── data/dataset.py          # SpineCapDataset (NIfTI + CSV)
+│   ├── model/
+│   │   ├── arch.py              # LamedMetaModel — forward multimodal
+│   │   ├── gemma3.py            # LamedGemma3ForCausalLM
+│   │   └── udml_fusion.py       # UDMLFusion — dynamic weight fusion
+│   └── train/
+│       ├── args.py              # TrainingArguments (Pydantic + HF)
+│       ├── train.py             # LightningModule wrapper
+│       ├── collator.py          # DataCollator
+│       └── utils.py             # LoRA linear name finder
+├── scripts/
+│   ├── setup.sh                 # One-time server setup
+│   ├── train.sh                 # Train + auto-merge LoRA
+│   ├── evaluate.sh              # Inference + metric scoring
+│   ├── train.py                 # DeepSpeed entry point
+│   ├── merge_lora.py            # Merge LoRA → HF model dir
+│   ├── demo_csv.py              # Batch inference on CSV
+│   └── eval_captions.py         # Caption metric scoring
+├── configs/
+│   └── ds_config_zero2.json     # DeepSpeed ZeRO-2 config
+├── dataset_ttd_256/
+│   └── report/
+│       ├── train.csv
+│       ├── val.csv
+│       └── test.csv
+├── weights/
+│   └── pretrained_ViT.bin       # M3D pretrained ViT weights
+├── M3D/                         # LaMed/M3D codebase (unchanged)
+└── pyproject.toml
+```
 
-Code LaMed/M3D gốc được giữ trong `M3D/` và vẫn được import trong quá trình train.
-
-## Môi Trường
-
-Tạo conda environment từ file đã đóng gói:
+## Cài Đặt (Lần Đầu Trên Server Mới)
 
 ```bash
-conda env create -f environment.yaml
-conda activate p2vg
+git clone <repo_url>
+cd P2VG
+git checkout dynamicfusion
+bash scripts/setup.sh
 ```
 
-Nếu environment đã tồn tại:
+`setup.sh` sẽ:
+1. Cài `uv` nếu chưa có
+2. `uv sync` — cài toàn bộ Python dependencies
+3. Smoke test imports
+4. Tự động fix đường dẫn tuyệt đối trong CSV dataset
+5. Kiểm tra `weights/pretrained_ViT.bin`
+6. Kiểm tra PM2
 
-```bash
-conda env update -f environment.yaml --prune
-conda activate p2vg
-```
+## Dữ Liệu
 
-Thiết lập import path của repo trước khi chạy script:
-
-```bash
-export P2VG_ROOT="$(pwd)"
-export PYTHONPATH="$P2VG_ROOT:$P2VG_ROOT/M3D:$PYTHONPATH"
-```
-
-Environment này dùng Python 3.10, PyTorch 2.6.0 với CUDA 12.4 wheels, DeepSpeed 0.18.8, Transformers 5.3.0, PEFT 0.18.1, MONAI, nibabel, cùng các package metric/utility cần cho branch này.
-
-## Định Dạng Dữ Liệu
-
-`SpineCapDataset` cần CSV có các cột sau:
-
-- `case_id`: mã sample. Loader lấy subject number từ phần suffix sau dấu `_` cuối cùng.
-- `images_path` hoặc `image_path`: đường dẫn tuyệt đối tới thư mục volume của subject, hoặc đường dẫn tương đối so với `--data_root`.
-- `Clinician's Notes`: nội dung report/caption mục tiêu.
-
-Với mỗi sample, loader sẽ tìm trong thư mục volume:
-
-- Sagittal volume: `sub-{sub_num}_{sagittal_modality}.nii.gz` hoặc `{sub_num}_{sagittal_modality}.nii.gz`
-- Axial T2 volume khi bật `--axt2_enable True`: `sub-{sub_num}_axt2.nii.gz`
-
-Các giá trị thường dùng cho `--sagittal_modality` là `t1`, `t2`, `t1t2`, và `fused`. Volume được đọc bằng nibabel, normalize theo percentile, và đưa về dạng `[1, D, H, W]`.
-
-Ví dụ cấu trúc TTD đã normalize:
-
-```text
-dataset_ttd_256/
-  report/
-    train.csv
-    val.csv
-  Volume/
-    sub-0001_fused.nii.gz
-    sub-0001_axt2.nii.gz
-```
-
-Tải dữ liệu TTD đã chuẩn bị bằng `gdown`:
+Tải dataset TTD 256 đã chuẩn bị:
 
 ```bash
 pip install gdown
@@ -74,142 +66,90 @@ gdown --id 1JC48AF33eIlq-sTxG54NTJZfjQqE4tXs -O dataset_ttd_256.zip
 unzip dataset_ttd_256.zip
 ```
 
-Cập nhật đường dẫn dữ liệu trong `src/finetune_lora.sh` theo thư mục vừa giải nén:
+Cấu trúc thư mục sau khi giải nén:
 
-```bash
-DATA_ROOT="/path/to/dataset_ttd_256"
-TRAIN_CSV="$DATA_ROOT/report/train.csv"
-VAL_CSV="$DATA_ROOT/report/val.csv"
+```
+dataset_ttd_256/
+├── report/
+│   ├── train.csv
+│   ├── val.csv
+│   └── test.csv
+└── Volume/
+    ├── sub-0001_fused.nii.gz
+    ├── sub-0001_axt2.nii.gz
+    └── ...
 ```
 
-## Weights Cần Có
+CSV cần các cột: `case_id`, `image_path` (hoặc `images_path`), `Clinician's Notes`.
 
-Script train giả định đã có pretrained visual weights cục bộ:
-
-```text
-weights/
-  pretrained_ViT.bin
-```
+## Weights
 
 Tải pretrained ViT từ Hugging Face:
 
-```text
+```
 https://huggingface.co/GoodBaiBai88/M3D-CLIP/blob/main/pretrained_ViT.bin
 ```
 
-Base language model thường dùng là `google/medgemma-1.5-4b-it`. Với MedGemma adapter mode, pretrained visual projector được tái sử dụng trực tiếp từ checkpoint MedGemma, nên path train hiện tại không cần `mm_projector.bin` riêng. Nếu model chưa có trong cache local, cần cấu hình quyền truy cập Hugging Face trước.
+Đặt vào `weights/pretrained_ViT.bin`.
+
+Base language model: `google/medgemma-1.5-4b-it` (tải tự động khi train lần đầu, cần HF token).
 
 ## Training
 
-Launcher chính được giữ ở:
+```bash
+bash scripts/train.sh          # fold 2 (mặc định)
+bash scripts/train.sh 3        # fold 3
+```
+
+Sau khi train xong, script tự động merge LoRA vào base model và lưu tại `outputs/fold{N}/merged_hf/`.
+
+Chạy background với PM2:
 
 ```bash
-DATA_ROOT=/path/to/dataset_ttd_256 \
-OUTPUT_DIR=/path/to/output/gemma3_TTD256_fused_axt2_ep5 \
-bash src/finetune_lora.sh
+pm2 start --name p2vg-train --no-autorestart -- bash scripts/train.sh 2
+pm2 logs p2vg-train --lines 200
 ```
 
-Script dùng `weights/pretrained_ViT.bin` trong repo hiện tại. Khi `deepspeed` không nằm trong `PATH`, truyền thêm `DEEPSPEED_BIN=/path/to/deepspeed`.
-
-Lệnh DeepSpeed tối giản:
+GPU mặc định: GPU 1 (`CUDA_VISIBLE_DEVICES=1`). Override bằng:
 
 ```bash
-deepspeed src/custom_train.py \
-  --version v0 \
-  --model_name_or_path google/medgemma-1.5-4b-it \
-  --model_type gemma3 \
-  --lora_enable True \
-  --vision_tower vit3d \
-  --axt2_enable True \
-  --axial_only False \
-  --freeze_vision_tower True \
-  --pretrain_vision_model /path/to/pretrained_ViT.bin \
-  --bf16 True \
-  --data_root /path/to/dataset \
-  --amos_train_cap_data_path /path/to/train.csv \
-  --amos_validation_cap_data_path /path/to/val.csv \
-  --output_dir /path/to/output \
-  --num_train_epochs 5 \
-  --per_device_train_batch_size 1 \
-  --per_device_eval_batch_size 1 \
-  --gradient_accumulation_steps 8 \
-  --eval_strategy epoch \
-  --save_strategy epoch \
-  --learning_rate 3e-5 \
-  --gradient_checkpointing True \
-  --dataloader_num_workers 4 \
-  --sagittal_modality fused \
-  --report_to wandb
+CUDA_VISIBLE_DEVICES=0 bash scripts/train.sh
 ```
 
-Một số flag DynamicFusion/UDML hữu ích:
+### Các Flag UDML Quan Trọng
 
-- `--axt2_enable True`: bật nhánh axial T2.
-- `--axial_only True`: chỉ dùng nhánh axial làm visual stream.
-- `--sagittal_modality fused`: chọn suffix file sagittal.
-- `--udml_noise_enable True`: thêm controlled noise để supervise variance.
-- `--udml_var_loss_weight 0.1`: trọng số của variance auxiliary loss.
-- `--udml_lm_aux_enable True`: bật LM auxiliary loss riêng cho sagittal-only và axial-only.
-- `--udml_lm_aux_loss_weight 1.0`: trọng số cho unimodal LM auxiliary losses.
-
-Trong lúc train LoRA, checkpoint sẽ lưu các tham số trainable dưới dạng `model_with_lora*.bin` trong `--output_dir`.
-
-## Merge LoRA Checkpoint
-
-Sau khi train, merge checkpoint trainable đã lưu thành một thư mục model kiểu Hugging Face:
-
-```bash
-python -u src/merge_lora_weights_and_save_hf_model.py \
-  --model_name_or_path google/medgemma-1.5-4b-it \
-  --model_type gemma3 \
-  --model_with_lora /path/to/output/model_with_lora.bin \
-  --output_dir /path/to/output/merged_hf \
-  --vision_tower vit3d \
-  --axt2_enable True \
-  --axial_only False \
-  --pretrain_vision_model /path/to/pretrained_ViT.bin
-```
-
-`demo_csv.py` sẽ load model từ thư mục merged này.
-
-## Inference
-
-Dùng script có sẵn hoặc chạy trực tiếp:
-
-```bash
-python -u src/demo_csv.py \
-  --model_name_or_path /path/to/merged_hf \
-  --data_root /path/to/dataset \
-  --amos_validation_cap_data_path /path/to/test.csv \
-  --output_dir /path/to/eval_output \
-  --axt2_enable True \
-  --axial_only False \
-  --sagittal_modality fused \
-  --do_sample False
-```
-
-File kết quả sinh ra là:
-
-```text
-/path/to/eval_output/eval_caption.csv
-```
+| Flag | Mặc định | Mô tả |
+|------|----------|--------|
+| `--udml_noise_enable` | `True` | Thêm controlled noise để supervise variance estimator |
+| `--udml_noise_prob` | `0.5` | Xác suất noise được inject mỗi sample |
+| `--udml_noise_min/max` | `2/12` | Khoảng số slice bị corrupt |
+| `--udml_var_loss_weight` | `0.1` | Trọng số variance auxiliary loss |
+| `--udml_lm_aux_enable` | `False` | Bật unimodal LM aux loss (sag-only + ax-only) |
+| `--udml_lm_aux_loss_weight` | `1.0` | Trọng số unimodal LM aux loss |
 
 ## Đánh Giá
 
-Chạy đánh giá caption metric trên CSV đã sinh. Script cần API key của Groq/Grok; truyền bằng biến môi trường `GROQ_API_KEY` hoặc flag `--llm_api_key`.
-
 ```bash
-export GROQ_API_KEY="your_api_key_here"
-
-python src/eval_caption_metrics.py \
-  --input_csv /path/to/eval_output/eval_caption.csv \
-  --output_csv /path/to/eval_output/eval_scores.csv \
-  --llm_model llama-3.3-70b-versatile
+bash scripts/evaluate.sh       # dùng outputs/fold2/merged_hf
+bash scripts/evaluate.sh 3     # fold 3
 ```
 
-Xem `python src/eval_caption_metrics.py --help` để biết chính xác các tuỳ chọn metric mà script local hỗ trợ.
+Cần `GROQ_API_KEY` cho LLM-based metrics:
 
-## Ghi Chú
+```bash
+export GROQ_API_KEY="your_key_here"
+bash scripts/evaluate.sh
+```
 
-- Script hiện có một số path theo máy hiện tại như `/storage/hoangnv` và `/home/hoangnv`; cần sửa lại để phù hợp hơn với máy của bạn
-- Để import ổn định, nên chạy từ repo root hoặc set `PYTHONPATH` như hướng dẫn phía trên.
+Kết quả lưu tại `outputs/fold{N}/eval_scores.csv`.
+
+## Kiến Trúc UDML Fusion
+
+`UDMLFusion` (`src/p2vg/model/udml_fusion.py`) tính trọng số động:
+
+1. **Variance estimator** — MLP 2 lớp output log-variance; chuyển sang std via `(x * 0.5).exp()`
+2. **Trọng số uncertainty** — `w_sag = 2σ_ax² / (σ_sag² + σ_ax²)` (modality nào bất định hơn → trọng số nhỏ hơn)
+3. **Dependency calculator** — Zero-ablation qua `shared_aux_head` để đo mức đóng góp của từng modality
+4. **Trọng số cuối** — Chia theo dependency rồi renormalize về tổng = 2
+
+Variance estimator được supervise bằng MSE loss so với mức noise được inject trong quá trình training (`--udml_noise_enable True`).

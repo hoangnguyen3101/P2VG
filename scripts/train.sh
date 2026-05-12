@@ -13,6 +13,7 @@ cd "$P2VG_ROOT"
 
 export PYTHONPATH="$P2VG_ROOT/src:$P2VG_ROOT/M3D${PYTHONPATH:+:$PYTHONPATH}"
 export PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True
+export CUDA_VISIBLE_DEVICES=1
 
 FOLD="${1:-2}"
 OUTPUT_SUFFIX="${2:-}"
