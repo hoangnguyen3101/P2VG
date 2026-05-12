@@ -111,12 +111,9 @@ else
     if command -v hf &>/dev/null; then
         hf download GoodBaiBai88/M3D-CLIP pretrained_ViT.bin --local-dir "$WEIGHTS_DIR"
         ok "pretrained_ViT.bin downloaded"
-    elif command -v uv &>/dev/null; then
-        uv run huggingface-cli download GoodBaiBai88/M3D-CLIP pretrained_ViT.bin --local-dir "$WEIGHTS_DIR"
-        ok "pretrained_ViT.bin downloaded"
     else
-        warn "  → Neither 'hf' nor 'huggingface-cli' found. Download manually:"
-        warn "  → hf download GoodBaiBai88/M3D-CLIP pretrained_ViT.bin --local-dir $WEIGHTS_DIR"
+        warn "  → 'hf' not found. Install: uv tool install hf"
+        warn "  → Then run: hf download GoodBaiBai88/M3D-CLIP pretrained_ViT.bin --local-dir $WEIGHTS_DIR"
     fi
 fi
 
