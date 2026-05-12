@@ -170,12 +170,15 @@ File kết quả sinh ra là:
 
 ## Đánh Giá
 
-Chạy đánh giá caption metric trên CSV đã sinh:
+Chạy đánh giá caption metric trên CSV đã sinh. Script cần API key của Groq/Grok; có thể truyền bằng biến môi trường `GROQ_API_KEY` hoặc flag `--llm_api_key`.
 
 ```bash
+export GROQ_API_KEY="your_api_key_here"
+
 python src/eval_caption_metrics.py \
   --input_csv /path/to/eval_output/eval_caption.csv \
-  --output_csv /path/to/eval_output/eval_scores.csv
+  --output_csv /path/to/eval_output/eval_scores.csv \
+  --llm_model llama-3.3-70b-versatile
 ```
 
 Xem `python src/eval_caption_metrics.py --help` để biết chính xác các tuỳ chọn metric mà script local hỗ trợ.
