@@ -83,3 +83,17 @@ echo "OUTPUT_DIR : $OUTPUT_DIR"
     --dataloader_num_workers 4 \
     --report_to wandb \
     --deepspeed "$P2VG_ROOT/configs/ds_config_zero2.json"
+
+# Merge LoRA into base model
+LORA_BIN="$OUTPUT_DIR/model_with_lora.bin"
+MERGED_DIR="$OUTPUT_DIR/merged_hf"
+
+echo "Merging LoRA weights: $LORA_BIN -> $MERGED_DIR"
+uv run python scripts/merge_lora.py \
+    --model_name_or_path "google/medgemma-1.5-4b-it" \
+    --model_type gemma3 \
+    --axt2_enable True \
+    --model_with_lora "$LORA_BIN" \
+    --output_dir "$MERGED_DIR"
+
+echo "Done. Merged model at: $MERGED_DIR"
