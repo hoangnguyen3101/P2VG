@@ -88,7 +88,7 @@ echo "OUTPUT_DIR : $OUTPUT_DIR"
     --gradient_checkpointing True \
     --dataloader_pin_memory True \
     --dataloader_num_workers 4 \
-    --report_to wandb \
+    --report_to none \
     --deepspeed "$P2VG_ROOT/configs/ds_config_zero2.json"
 
 # Merge LoRA into base model
