@@ -27,7 +27,7 @@ echo "Val CSV   : $VAL_CSV"
 echo "Output    : $OUTPUT_DIR"
 
 # Step 1: generate predictions
-uv run python scripts/demo_csv.py \
+python scripts/demo_csv.py \
     --model_name_or_path "$MODEL_PATH" \
     --data_root "$DATA_ROOT" \
     --amos_validation_cap_data_path "$VAL_CSV" \
@@ -37,7 +37,7 @@ uv run python scripts/demo_csv.py \
 
 # Step 2: compute metrics
 LLM_MODEL="${LLM_MODEL:-llama-3.3-70b-versatile}"
-uv run python scripts/eval_captions.py \
+python scripts/eval_captions.py \
     --input_csv "$OUTPUT_DIR/eval_caption.csv" \
     --output_csv "$OUTPUT_DIR/eval_scores.csv" \
     --llm_model "$LLM_MODEL"

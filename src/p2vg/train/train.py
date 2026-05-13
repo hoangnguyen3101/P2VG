@@ -48,6 +48,7 @@ def main():
         model_max_length=training_args.model_max_length,
         padding_side="right",
         trust_remote_code=True,
+        local_files_only=True,
     )
 
     special_token = {"additional_special_tokens": ["<im_patch>", "<bx_start>", "<bx_end>"]}
@@ -65,7 +66,9 @@ def main():
             from safetensors.torch import load_file
 
             raw_config = AutoConfig.from_pretrained(
-                model_args.model_name_or_path, cache_dir=training_args.cache_dir
+                model_args.model_name_or_path,
+                cache_dir=training_args.cache_dir,
+                local_files_only=True,
             )
 
             if hasattr(raw_config, "text_config"):
@@ -92,6 +95,7 @@ def main():
                 model_path = snapshot_download(
                     model_args.model_name_or_path,
                     cache_dir=training_args.cache_dir,
+                    local_files_only=True,
                 )
             rank0_print(f"Loading weights from: {model_path}")
 
@@ -129,7 +133,9 @@ def main():
     else:
         from transformers import Gemma3ForCausalLM
         model = Gemma3ForCausalLM.from_pretrained(
-            model_args.model_name_or_path, cache_dir=training_args.cache_dir
+            model_args.model_name_or_path,
+            cache_dir=training_args.cache_dir,
+            local_files_only=True,
         )
 
     model.config.use_cache = False
@@ -230,7 +236,7 @@ def main():
         preprocess_logits_for_metrics=preprocess_logits_for_metrics,
     )
     trainer.add_callback(EvalGenerationCallback(trainer, tokenizer))
-    trainer.add_callback(transformers.EarlyStoppingCallback(early_stopping_patience=2))
+    trainer.add_callback(transformers.EarlyStoppingCallback(early_stopping_patience=5))
 
     trainer.train(resume_from_checkpoint=training_args.resume_from_checkpoint)
     trainer.save_state()
@@ -238,11 +244,18 @@ def main():
 
     rank0_print("=" * 20 + " Save model " + "=" * 20)
     if training_args.lora_enable:
-        state_dict_with_lora = model.state_dict()
-        torch.save(
-            state_dict_with_lora,
-            os.path.join(training_args.output_dir, "model_with_lora.bin"),
-        )
+        best_lora_path = os.path.join(training_args.output_dir, "model_with_lora.bin")
+        if os.path.exists(best_lora_path):
+            rank0_print(f"Best LoRA checkpoint already saved at: {best_lora_path}")
+        else:
+            trainable_keys = {n for n, p in model.named_parameters() if p.requires_grad}
+            state_dict_with_lora = {
+                k: v.detach().cpu()
+                for k, v in model.state_dict().items()
+                if k in trainable_keys
+            }
+            torch.save(state_dict_with_lora, best_lora_path)
+            rank0_print(f"Saved final trainable LoRA params to: {best_lora_path}")
     else:
         safe_save_model_for_hf_trainer(trainer=trainer, output_dir=training_args.output_dir)
 

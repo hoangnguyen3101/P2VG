@@ -4,7 +4,7 @@
 #   FOLD defaults to 2, OUTPUT_SUFFIX is optional (e.g. "_run2")
 #
 # Env overrides:
-#   DATA_ROOT, WEIGHTS_DIR, DEEPSPEED_BIN, TRAIN_CSV, VAL_CSV
+#   DATA_ROOT, WEIGHTS_DIR, OUTPUT_ROOT, DEEPSPEED_BIN, PYTHON_BIN, TRAIN_CSV, VAL_CSV
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -15,21 +15,30 @@ err() { echo "[ERR] $*" >&2; }
 
 export PYTHONPATH="$P2VG_ROOT/src:$P2VG_ROOT/M3D${PYTHONPATH:+:$PYTHONPATH}"
 export PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True
-export CUDA_VISIBLE_DEVICES=1
+export CUDA_VISIBLE_DEVICES="${CUDA_VISIBLE_DEVICES:-0}"
 
 FOLD="${1:-2}"
 OUTPUT_SUFFIX="${2:-}"
 
-DATA_ROOT="${DATA_ROOT:-$P2VG_ROOT/dataset_ttd_256}"
+DEFAULT_DATA_ROOT="/storage/hoangnv/dataset_ttd_256"
+DATA_ROOT="${DATA_ROOT:-$DEFAULT_DATA_ROOT}"
 WEIGHTS_DIR="${WEIGHTS_DIR:-$P2VG_ROOT/weights}"
-DEEPSPEED_BIN="${DEEPSPEED_BIN:-$(uv run which deepspeed 2>/dev/null || which deepspeed 2>/dev/null || echo '')}"
+OUTPUT_ROOT="${OUTPUT_ROOT:-/storage/hoangnv/P2VG_outputs_dynamicfusion/fold2_1}"
+DEFAULT_PYTHON_BIN=""
+DEFAULT_DEEPSPEED_BIN=""
+PYTHON_BIN="${PYTHON_BIN:-${DEFAULT_PYTHON_BIN:-$(which python 2>/dev/null || echo '')}}"
+DEEPSPEED_BIN="${DEEPSPEED_BIN:-${DEFAULT_DEEPSPEED_BIN:-$(which deepspeed 2>/dev/null || echo '')}}"
+if [ -z "$PYTHON_BIN" ]; then
+    err "python not found. Activate your conda env first, e.g.: conda activate p2vg"
+    exit 1
+fi
 if [ -z "$DEEPSPEED_BIN" ]; then
-    err "deepspeed not found. Run: uv sync"
+    err "deepspeed not found. Activate your conda env first, e.g.: conda activate p2vg"
     exit 1
 fi
 TRAIN_CSV="${TRAIN_CSV:-$DATA_ROOT/report/train.csv}"
 VAL_CSV="${VAL_CSV:-$DATA_ROOT/report/val.csv}"
-OUTPUT_DIR="$P2VG_ROOT/outputs/fold${FOLD}${OUTPUT_SUFFIX}"
+OUTPUT_DIR="$OUTPUT_ROOT/fold${FOLD}${OUTPUT_SUFFIX}"
 
 if [ ! -f "$TRAIN_CSV" ] || [ ! -f "$VAL_CSV" ]; then
     echo "Missing dataset CSV files under DATA_ROOT=$DATA_ROOT" >&2
@@ -47,6 +56,8 @@ export WANDB_NAME="${WANDB_NAME:-fold${FOLD}${OUTPUT_SUFFIX}}"
 echo "P2VG_ROOT  : $P2VG_ROOT"
 echo "DATA_ROOT  : $DATA_ROOT"
 echo "OUTPUT_DIR : $OUTPUT_DIR"
+echo "PYTHON     : $PYTHON_BIN"
+echo "DEEPSPEED  : $DEEPSPEED_BIN"
 
 "$DEEPSPEED_BIN" scripts/train.py \
     --version v0 \
@@ -63,21 +74,21 @@ echo "OUTPUT_DIR : $OUTPUT_DIR"
     --amos_train_cap_data_path "$TRAIN_CSV" \
     --amos_validation_cap_data_path "$VAL_CSV" \
     --sagittal_modality fused \
-    --udml_noise_enable True \
+    --udml_noise_enable False \
     --udml_noise_prob 0.5 \
     --udml_noise_min 2 \
     --udml_noise_max 12 \
     --udml_noise_std_scale 0.02 \
     --udml_var_loss_weight 0.1 \
     --output_dir "$OUTPUT_DIR" \
-    --num_train_epochs 50 \
+    --num_train_epochs 20 \
     --per_device_train_batch_size 1 \
     --per_device_eval_batch_size 1 \
     --gradient_accumulation_steps 8 \
     --eval_strategy "epoch" \
-    --save_strategy "epoch" \
-    --save_total_limit 5 \
-    --load_best_model_at_end True \
+    --save_strategy "no" \
+    --save_total_limit 1 \
+    --load_best_model_at_end False \
     --metric_for_best_model "loss" \
     --greater_is_better False \
     --learning_rate 3e-5 \
@@ -88,7 +99,7 @@ echo "OUTPUT_DIR : $OUTPUT_DIR"
     --gradient_checkpointing True \
     --dataloader_pin_memory True \
     --dataloader_num_workers 4 \
-    --report_to none \
+    --report_to wandb \
     --deepspeed "$P2VG_ROOT/configs/ds_config_zero2.json"
 
 # Merge LoRA into base model
@@ -96,7 +107,7 @@ LORA_BIN="$OUTPUT_DIR/model_with_lora.bin"
 MERGED_DIR="$OUTPUT_DIR/merged_hf"
 
 echo "Merging LoRA weights: $LORA_BIN -> $MERGED_DIR"
-uv run python scripts/merge_lora.py \
+"$PYTHON_BIN" scripts/merge_lora.py \
     --model_name_or_path "google/medgemma-1.5-4b-it" \
     --model_type gemma3 \
     --axt2_enable True \
