@@ -25,12 +25,24 @@ class UDMLFusion(nn.Module):
         self.eps = eps
         self.last_aux = {}
 
-    def forward(self, feat_sag, feat_ax, sag_variance=None, ax_variance=None):
+    def _estimate_scales(self, feat_sag, feat_ax):
         sag_pool = feat_sag.mean(dim=1)
         ax_pool = feat_ax.mean(dim=1)
 
         sag_scale = (self.sag_variance_estimator(sag_pool.detach()) * 0.5).exp() + self.eps
         ax_scale = (self.ax_variance_estimator(ax_pool.detach()) * 0.5).exp() + self.eps
+        return sag_pool, ax_pool, sag_scale, ax_scale
+
+    def uncertainty_loss(self, feat_sag, feat_ax, sag_variance, ax_variance):
+        _, _, sag_scale, ax_scale = self._estimate_scales(feat_sag, feat_ax)
+        sag_target = sag_variance.to(device=feat_sag.device, dtype=sag_scale.dtype).view_as(sag_scale)
+        ax_target = ax_variance.to(device=feat_ax.device, dtype=ax_scale.dtype).view_as(ax_scale)
+        return (
+            F.mse_loss(sag_scale, sag_target) + F.mse_loss(ax_scale, ax_target)
+        ) * self.var_loss_weight
+
+    def forward(self, feat_sag, feat_ax):
+        sag_pool, ax_pool, sag_scale, ax_scale = self._estimate_scales(feat_sag, feat_ax)
 
         denom = sag_scale.square() + ax_scale.square() + self.eps
         target_weight_sag = 2.0 * ax_scale.square() / denom
@@ -55,15 +67,8 @@ class UDMLFusion(nn.Module):
             weight_sag.unsqueeze(1) * feat_sag + weight_ax.unsqueeze(1) * feat_ax
         )
 
-        aux_loss = feat_sag.new_zeros(())
-        if sag_variance is not None and ax_variance is not None:
-            sag_target = sag_variance.to(device=feat_sag.device, dtype=sag_scale.dtype).view_as(sag_scale)
-            ax_target = ax_variance.to(device=feat_ax.device, dtype=ax_scale.dtype).view_as(ax_scale)
-            aux_loss = F.mse_loss(sag_scale, sag_target) + F.mse_loss(ax_scale, ax_target)
-            aux_loss = aux_loss * self.var_loss_weight
-
         self.last_aux = {
-            "loss": aux_loss,
+            "loss": feat_sag.new_zeros(()),
             "sag_scale": sag_scale.detach(),
             "ax_scale": ax_scale.detach(),
             "weight_sag": weight_sag.detach(),
@@ -74,4 +79,4 @@ class UDMLFusion(nn.Module):
             "sag_aux": sag_aux.detach(),
             "ax_aux": ax_aux.detach(),
         }
-        return final_feat, aux_loss
+        return final_feat

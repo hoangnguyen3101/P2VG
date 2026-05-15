@@ -1,4 +1,5 @@
 from abc import ABC, abstractmethod
+from typing import Any, Protocol, cast
 
 import torch
 import torch.nn as nn
@@ -6,6 +7,22 @@ import torch.nn as nn
 from .multimodal_encoder.builder import build_vision_tower
 from .multimodal_projector.builder import build_mm_projector
 from .udml_fusion import UDMLFusion
+
+
+class _LamedInnerModel(Protocol):
+    config: Any
+    mm_projector: nn.Module
+    vision_tower_ax: nn.Module
+    udml_fusion: nn.Module
+    axt2_enable: bool
+    axial_only: bool
+    udml_aux_loss: Any
+    udml_sag_image_features: Any
+    udml_ax_image_features: Any
+    embed_tokens: nn.Module
+
+    def get_vision_tower(self) -> nn.Module | None:
+        ...
 
 
 class LamedMetaModel:
@@ -47,11 +64,6 @@ class LamedMetaModel:
 
         self.config.mm_hidden_size = self.vision_tower.hidden_size
 
-        # mm_projector must exist before UDML fusion is built, because MedGemma
-        # adapter mode fuses in the pretrained projection input space (1152-D).
-        if getattr(self, 'mm_projector', None) is None:
-            self.mm_projector = build_mm_projector(self.config)
-
         # Axial vision tower initialization
         self.axt2_enable = getattr(model_args, 'axt2_enable', False)
         self.axial_only = getattr(model_args, 'axial_only', False)
@@ -63,11 +75,7 @@ class LamedMetaModel:
                 self.vision_tower_ax.requires_grad_(not model_args.freeze_vision_tower)
                 
             if getattr(self, 'udml_fusion', None) is None:
-                udml_hidden_size = getattr(
-                    self.mm_projector,
-                    "medgemma_input_dim",
-                    self.config.mm_hidden_size,
-                ) if getattr(self.config, "medgemma_adapter", False) and getattr(self, "mm_projector", None) is not None else self.config.mm_hidden_size
+                udml_hidden_size = self.config.mm_hidden_size
                 self.udml_fusion = UDMLFusion(
                     hidden_size=udml_hidden_size,
                     var_loss_weight=self.config.udml_var_loss_weight,
@@ -82,6 +90,10 @@ class LamedMetaModel:
             if self.axt2_enable:
                 self.vision_tower_ax.vision_tower.load_state_dict(vision_model_weights, strict=True)
                 print("[ViT Axial] Loaded pretrained weights with strict=True")
+
+        # mm_projector
+        if getattr(self, 'mm_projector', None) is None:
+            self.mm_projector = build_mm_projector(self.config)
 
         if model_args.pretrain_mm_mlp_adapter is not None and not getattr(self.config, 'medgemma_adapter', False):
             mm_projector_weights = torch.load(model_args.pretrain_mm_mlp_adapter, map_location='cpu')
@@ -108,27 +120,49 @@ class LamedMetaModel:
 
 class LamedMetaForCausalLM(ABC):
     @abstractmethod
-    def get_model(self):
+    def get_model(self) -> _LamedInnerModel:
         pass
 
+    def _model(self) -> Any:
+        return cast(Any, self.get_model())
+
     def get_vision_tower(self):
-        return self.get_model().get_vision_tower()
+        return self._model().get_vision_tower()
 
     def encode_images(self, images):
-        image_features = self.get_model().get_vision_tower()(images)
-        image_features = self.get_model().mm_projector(image_features)
+        model = self._model()
+        vision_tower = model.get_vision_tower()
+        if vision_tower is None:
+            raise ValueError("Vision tower is not initialized.")
+        image_features = vision_tower(images)
+        image_features = model.mm_projector(image_features)
         return image_features
 
-    def encode_all_images(self, images_sag, images_ax=None, sag_noise_variance=None, ax_noise_variance=None):
-        model = self.get_model()
+    def encode_all_images(
+        self,
+        images_sag,
+        images_ax=None,
+        images_sag_noisy=None,
+        images_ax_noisy=None,
+        sag_noise_variance=None,
+        ax_noise_variance=None,
+    ):
+        model = self._model()
         model.udml_aux_loss = None
         model.udml_sag_image_features = None
         model.udml_ax_image_features = None
+        vision_tower = model.get_vision_tower()
+        if vision_tower is None:
+            raise ValueError("Vision tower is not initialized.")
         # Auto-cast inputs to match model dtype (e.g. float16 for inference)
-        target_dtype = next(model.get_vision_tower().parameters()).dtype
+        target_dtype = next(vision_tower.parameters()).dtype
         images_sag = images_sag.to(dtype=target_dtype)
         if images_ax is not None:
             images_ax = images_ax.to(dtype=target_dtype)
+        if images_sag_noisy is not None:
+            images_sag_noisy = images_sag_noisy.to(dtype=target_dtype)
+        if images_ax_noisy is not None:
+            images_ax_noisy = images_ax_noisy.to(dtype=target_dtype)
         if getattr(model, "axial_only", False):
             if images_ax is None:
                 raise ValueError("axial_only=True but images_ax is None")
@@ -137,35 +171,33 @@ class LamedMetaForCausalLM(ABC):
             return image_features
 
         # 1. Encode Sagittal (Fused T1+T2)
-        feat_sag = model.get_vision_tower()(images_sag) # [B, 2048, 768]
+        feat_sag = vision_tower(images_sag) # [B, 2048, 768]
         
         if model.axt2_enable and images_ax is not None:
             # 2. Encode Axial T2
             feat_ax = model.vision_tower_ax(images_ax) # [B, 2048, 768]
             
-            if getattr(model.mm_projector, "medgemma_adapter", False):
-                # Pool and adapt each view into MedGemma's native visual-projection input space.
-                sag_med = model.mm_projector.encode_medgemma_inputs(feat_sag) # [B, 256, 1152]
-                ax_med = model.mm_projector.encode_medgemma_inputs(feat_ax) # [B, 256, 1152]
-                final_feat, udml_aux_loss = model.udml_fusion(
-                    sag_med,
-                    ax_med,
-                    sag_variance=sag_noise_variance,
-                    ax_variance=ax_noise_variance,
-                )
-                image_features = model.mm_projector.project_medgemma_inputs(final_feat) # [B, 256, hidden_size]
-                if getattr(model.config, "udml_lm_aux_enable", False) and self.training:
-                    model.udml_sag_image_features = model.mm_projector.project_medgemma_inputs(sag_med)
-                    model.udml_ax_image_features = model.mm_projector.project_medgemma_inputs(ax_med)
-                model.udml_aux_loss = udml_aux_loss
-                return image_features
-
-            # 3. UDML-style fusion in vision-token space for non-MedGemma projectors.
-            final_feat, udml_aux_loss = model.udml_fusion(feat_sag, feat_ax, sag_noise_variance, ax_noise_variance)
+            # 3. Clean features drive caption training and dynamic fusion.
+            final_feat = model.udml_fusion(feat_sag, feat_ax)
             if getattr(model.config, "udml_lm_aux_enable", False) and self.training:
                 model.udml_sag_image_features = model.mm_projector(feat_sag)
                 model.udml_ax_image_features = model.mm_projector(feat_ax)
-            model.udml_aux_loss = udml_aux_loss
+            if (
+                self.training
+                and images_sag_noisy is not None
+                and images_ax_noisy is not None
+                and sag_noise_variance is not None
+                and ax_noise_variance is not None
+            ):
+                with torch.no_grad():
+                    feat_sag_noisy = vision_tower(images_sag_noisy)
+                    feat_ax_noisy = model.vision_tower_ax(images_ax_noisy)
+                model.udml_aux_loss = model.udml_fusion.uncertainty_loss(
+                    feat_sag_noisy,
+                    feat_ax_noisy,
+                    sag_noise_variance,
+                    ax_noise_variance,
+                )
         else:
             final_feat = feat_sag
             
@@ -175,7 +207,8 @@ class LamedMetaForCausalLM(ABC):
 
     def prepare_inputs_for_multimodal(
         self, input_ids, position_ids, attention_mask, past_key_values, labels,
-        images, images_ax=None, sag_noise_variance=None, ax_noise_variance=None,
+        images, images_ax=None, images_noisy=None, images_ax_noisy=None,
+        sag_noise_variance=None, ax_noise_variance=None,
     ):
         vision_tower = self.get_vision_tower()
         if vision_tower is None or images is None or input_ids.shape[1] == 1:
@@ -184,6 +217,8 @@ class LamedMetaForCausalLM(ABC):
             image_features = self.encode_all_images(
                 images,
                 images_ax,
+                images_noisy,
+                images_ax_noisy,
                 sag_noise_variance=sag_noise_variance,
                 ax_noise_variance=ax_noise_variance,
             )

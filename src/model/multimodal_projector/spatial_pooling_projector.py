@@ -18,13 +18,12 @@ class SpatialPoolingProjector(nn.Module):
 
         if medgemma_adapter:
             # Adapter mode: small adapter(in_dim→1152) + MedGemma pretrained projection(1152→out_dim) + RMSNorm
-            self.medgemma_input_dim = 1152
             self.adapter = nn.Sequential(
-                nn.Linear(in_dim, self.medgemma_input_dim),
+                nn.Linear(in_dim, 1152),
                 nn.GELU(),
             )
-            self.soft_emb_norm = torch.nn.RMSNorm(self.medgemma_input_dim)  # Norm BEFORE projection (MedGemma order)
-            self.medgemma_projection = nn.Linear(self.medgemma_input_dim, out_dim, bias=False)
+            self.soft_emb_norm = torch.nn.RMSNorm(1152)  # Norm BEFORE projection (MedGemma order)
+            self.medgemma_projection = nn.Linear(1152, out_dim, bias=False)
         elif layer_type == 'linear':
             depth = int(layer_num)
             modules = [nn.Linear(in_dim, out_dim)]
@@ -43,7 +42,7 @@ class SpatialPoolingProjector(nn.Module):
 
         self.pooling_type = pooling_type
 
-    def pool_tokens(self, x):
+    def forward(self, x):
         B = x.shape[0] # B*N*D
 
         if self.pooling_type == 'spatial':
@@ -56,31 +55,6 @@ class SpatialPoolingProjector(nn.Module):
             x = x.permute(0, 2, 1) #b d n
             x = F.avg_pool1d(x, kernel_size=self.pooling_size**3, stride=self.pooling_size**3)
             x = x.permute(0, 2, 1) #b n d
-        return x
-
-    def encode_medgemma_inputs(self, x):
-        if not self.medgemma_adapter:
-            raise RuntimeError("encode_medgemma_inputs is only available in MedGemma adapter mode.")
-        x = self.pool_tokens(x)
-        B = x.shape[0]
-        x = rearrange(x, "b n d -> (b n) d")
-        x = self.adapter(x)              # [B*N, 768] → [B*N, 1152]
-        x = rearrange(x, "(b n) d -> b n d", b=B)
-        return x
-
-    def project_medgemma_inputs(self, x):
-        if not self.medgemma_adapter:
-            raise RuntimeError("project_medgemma_inputs is only available in MedGemma adapter mode.")
-        B = x.shape[0]
-        x = rearrange(x, "b n d -> (b n) d")
-        x = self.soft_emb_norm(x)        # RMSNorm(1152) (pretrained!) — before projection
-        x = self.medgemma_projection(x)  # [B*N, 1152] → [B*N, 2560] (pretrained!)
-        x = rearrange(x, "(b n) d -> b n d", b=B)
-        return x
-
-    def forward(self, x):
-        B = x.shape[0] # B*N*D
-        x = self.pool_tokens(x)
 
         x = rearrange(x, "b n d -> (b n) d")
 

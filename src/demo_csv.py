@@ -10,7 +10,6 @@ from transformers import AutoTokenizer, AutoModelForCausalLM
 from tqdm import tqdm
 from src.multi_dataset import SpineCapDataset
 from src.model.lamed_gemma3 import LamedGemma3ForCausalLM
-from LaMed.src.model.multimodal_encoder.builder import build_vision_tower
 
 
 def seed_everything(seed):
@@ -115,6 +114,7 @@ def main():
 
     vision_args = _VisionArgs()
     model.get_model().initialize_vision_modules(model_args=vision_args)
+    args.proj_out_num = model.get_model().mm_projector.proj_out_num
 
     # Load merged weights (includes LLM + ViT + projector + dual-encoder)
     safetensors_path = os.path.join(args.model_name_or_path, "model.safetensors")

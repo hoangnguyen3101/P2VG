@@ -1,5 +1,9 @@
-"""Entry point for training — called by DeepSpeed launcher via scripts/train.sh."""
-from p2vg.train.train import main
+"""Compatibility entry point for training.
+
+The active training implementation follows the hoangnv/g layout in
+``src/custom_train.py``; this wrapper is kept for old commands.
+"""
+from src.custom_train import main
 
 if __name__ == "__main__":
     main()

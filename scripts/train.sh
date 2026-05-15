@@ -13,7 +13,7 @@ cd "$P2VG_ROOT"
 
 err() { echo "[ERR] $*" >&2; }
 
-export PYTHONPATH="$P2VG_ROOT/src:$P2VG_ROOT/M3D${PYTHONPATH:+:$PYTHONPATH}"
+export PYTHONPATH="$P2VG_ROOT:$P2VG_ROOT/src${PYTHONPATH:+:$PYTHONPATH}"
 export PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True
 export CUDA_VISIBLE_DEVICES="${CUDA_VISIBLE_DEVICES:-0}"
 
@@ -52,36 +52,47 @@ fi
 
 export WANDB_PROJECT="${WANDB_PROJECT:-P2VG_UDML}"
 export WANDB_NAME="${WANDB_NAME:-fold${FOLD}${OUTPUT_SUFFIX}}"
+LORA_R="${LORA_R:-8}"
+LORA_ALPHA="${LORA_ALPHA:-32}"
+UDML_NOISE_PROB="${UDML_NOISE_PROB:-0.2}"
+UDML_NOISE_MAX="${UDML_NOISE_MAX:-6}"
 
 echo "P2VG_ROOT  : $P2VG_ROOT"
 echo "DATA_ROOT  : $DATA_ROOT"
 echo "OUTPUT_DIR : $OUTPUT_DIR"
 echo "PYTHON     : $PYTHON_BIN"
 echo "DEEPSPEED  : $DEEPSPEED_BIN"
+echo "UDML_NOISE : prob=$UDML_NOISE_PROB max=$UDML_NOISE_MAX"
 
-"$DEEPSPEED_BIN" scripts/train.py \
+"$DEEPSPEED_BIN" src/custom_train.py \
     --version v0 \
     --model_name_or_path "google/medgemma-1.5-4b-it" \
     --model_type gemma3 \
     --lora_enable True \
+    --lora_r "$LORA_R" \
+    --lora_alpha "$LORA_ALPHA" \
     --vision_tower vit3d \
     --axt2_enable True \
     --axial_only False \
     --freeze_vision_tower True \
     --pretrain_vision_model "$WEIGHTS_DIR/pretrained_ViT.bin" \
     --bf16 False \
+    --mm_projector_type spp \
     --data_root "$DATA_ROOT" \
     --amos_train_cap_data_path "$TRAIN_CSV" \
     --amos_validation_cap_data_path "$VAL_CSV" \
     --sagittal_modality fused \
-    --udml_noise_enable False \
-    --udml_noise_prob 0.5 \
+    --udml_noise_enable True \
+    --udml_noise_prob "$UDML_NOISE_PROB" \
     --udml_noise_min 2 \
-    --udml_noise_max 12 \
+    --udml_noise_max "$UDML_NOISE_MAX" \
     --udml_noise_std_scale 0.02 \
     --udml_var_loss_weight 0.1 \
+    --udml_lm_aux_enable True \
+    --udml_lm_aux_loss_weight 1.0 \
     --output_dir "$OUTPUT_DIR" \
     --num_train_epochs 20 \
+    --model_max_length 768 \
     --per_device_train_batch_size 1 \
     --per_device_eval_batch_size 1 \
     --gradient_accumulation_steps 8 \
@@ -107,10 +118,14 @@ LORA_BIN="$OUTPUT_DIR/model_with_lora.bin"
 MERGED_DIR="$OUTPUT_DIR/merged_hf"
 
 echo "Merging LoRA weights: $LORA_BIN -> $MERGED_DIR"
-"$PYTHON_BIN" scripts/merge_lora.py \
+"$PYTHON_BIN" src/merge_lora_weights_and_save_hf_model.py \
     --model_name_or_path "google/medgemma-1.5-4b-it" \
     --model_type gemma3 \
     --axt2_enable True \
+    --pretrain_vision_model "$WEIGHTS_DIR/pretrained_ViT.bin" \
+    --mm_projector_type spp \
+    --lora_r "$LORA_R" \
+    --lora_alpha "$LORA_ALPHA" \
     --model_with_lora "$LORA_BIN" \
     --output_dir "$MERGED_DIR"
 

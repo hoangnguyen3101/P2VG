@@ -35,7 +35,6 @@ P2VG/
 │       └── test.csv
 ├── weights/
 │   └── pretrained_ViT.bin       # M3D pretrained ViT weights
-├── M3D/                         # LaMed/M3D codebase (unchanged)
 └── pyproject.toml
 ```
 
@@ -124,7 +123,7 @@ CUDA_VISIBLE_DEVICES=0 bash scripts/train.sh
 | `--udml_noise_prob` | `0.5` | Xác suất noise được inject mỗi sample |
 | `--udml_noise_min/max` | `2/12` | Khoảng số slice bị corrupt |
 | `--udml_var_loss_weight` | `0.1` | Trọng số variance auxiliary loss |
-| `--udml_lm_aux_enable` | `False` | Bật unimodal LM aux loss (sag-only + ax-only) |
+| `--udml_lm_aux_enable` | `True` | Bật unimodal LM aux loss (sag-only + ax-only) |
 | `--udml_lm_aux_loss_weight` | `1.0` | Trọng số unimodal LM aux loss |
 
 ## Đánh Giá

@@ -10,7 +10,7 @@ from src.multi_dataset import(
     SpineCapDataset,
 )
 from src.model.lamed_gemma3 import LamedGemma3ForCausalLM
-from LaMed.src.train.lamed_trainer import LaMedTrainer
+from src.lamed_trainer import LaMedTrainer
 
 
 local_rank = None
@@ -109,16 +109,16 @@ class DataArguments:
         metadata={"help": "Modality for sagittal images (t1, t2, fused)."}
     )
     udml_noise_enable: bool = field(
-        default=False,
+        default=True,
         metadata={"help": "Inject controlled Gaussian noise for UDML uncertainty supervision."},
     )
-    udml_noise_prob: float = field(default=0.5)
+    udml_noise_prob: float = field(default=0.2)
     udml_noise_min: int = field(default=2)
-    udml_noise_max: int = field(default=12)
+    udml_noise_max: int = field(default=6)
     udml_noise_std_scale: float = field(default=0.02)
     udml_var_loss_weight: float = field(default=0.1)
     udml_lm_aux_enable: bool = field(
-        default=False,
+        default=True,
         metadata={"help": "Add sagittal-only and axial-only LM losses, analogous to UDML unimodal CE losses."},
     )
     udml_lm_aux_loss_weight: float = field(default=1.0)
@@ -147,8 +147,8 @@ class DataArguments:
 class TrainingArguments(transformers.TrainingArguments):
     # lora
     lora_enable: bool = False
-    lora_r: int = 32
-    lora_alpha: int = 64
+    lora_r: int = 8
+    lora_alpha: int = 32
     lora_dropout: float = 0.05
     lora_weight_path: str = ""
     lora_bias: str = "none"
@@ -311,11 +311,23 @@ class DataCollator:
         pass
 
     def __call__(self, batch: list) -> dict:
-        images, image_ax, input_ids, labels, attention_mask, sag_noise_variance, ax_noise_variance = tuple(
+        (
+            images,
+            image_ax,
+            images_noisy,
+            image_ax_noisy,
+            input_ids,
+            labels,
+            attention_mask,
+            sag_noise_variance,
+            ax_noise_variance,
+        ) = tuple(
             [b[key] for b in batch]
             for key in (
                 "image",
                 "image_ax",
+                "image_noisy",
+                "image_ax_noisy",
                 "input_id",
                 "label",
                 "attention_mask",
@@ -326,6 +338,8 @@ class DataCollator:
 
         images = torch.cat([_.unsqueeze(0) for _ in images], dim=0)
         image_ax = torch.cat([_.unsqueeze(0) for _ in image_ax], dim=0)
+        images_noisy = torch.cat([_.unsqueeze(0) for _ in images_noisy], dim=0)
+        image_ax_noisy = torch.cat([_.unsqueeze(0) for _ in image_ax_noisy], dim=0)
         input_ids = torch.cat([_.unsqueeze(0) for _ in input_ids], dim=0)
         labels = torch.cat([_.unsqueeze(0) for _ in labels], dim=0)
         attention_mask = torch.cat([_.unsqueeze(0) for _ in attention_mask], dim=0)
@@ -335,6 +349,8 @@ class DataCollator:
         return_dict = dict(
             images=images,
             images_ax=image_ax,
+            images_noisy=images_noisy,
+            images_ax_noisy=image_ax_noisy,
             input_ids=input_ids,
             labels=labels,
             attention_mask=attention_mask,
@@ -527,12 +543,6 @@ def main():
         rank0_print("Adding LoRA adapters only on LLM.")
         model = get_peft_model(model, lora_config)
 
-        if training_args.lora_weight_path:
-            ckpt = torch.load(training_args.lora_weight_path, map_location="cpu")
-            missing, unexpected = model.load_state_dict(ckpt, strict=False)
-            rank0_print(f"Loaded LoRA/start weights from {training_args.lora_weight_path}")
-            rank0_print(f"Missing keys: {len(missing)}, Unexpected keys: {len(unexpected)}")
-
         # Enable training for non-LLM components
         trainable_keywords = [
             "mm_projector",
@@ -599,7 +609,7 @@ def main():
     )
     trainer.add_callback(MyCallback(trainer, tokenizer))
     # Thêm Early Stopping để tránh overfit
-    trainer.add_callback(transformers.EarlyStoppingCallback(early_stopping_patience=2))
+    trainer.add_callback(transformers.EarlyStoppingCallback(early_stopping_patience=5))
     
     trainer.train(resume_from_checkpoint=training_args.resume_from_checkpoint)
     trainer.save_state()

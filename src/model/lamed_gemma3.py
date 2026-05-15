@@ -1,4 +1,4 @@
-from typing import List, Optional, Tuple, Union, Any
+from typing import Any, List, Optional, Tuple, Union, cast
 
 import torch
 import torch.nn as nn
@@ -57,6 +57,8 @@ class LamedGemma3ForCausalLM(LamedMetaForCausalLM, Gemma3ForCausalLM):
             self,
             images: Optional[torch.FloatTensor] = None,
             images_ax: Optional[torch.FloatTensor] = None,
+            images_noisy: Optional[torch.FloatTensor] = None,
+            images_ax_noisy: Optional[torch.FloatTensor] = None,
             sag_noise_variance: Optional[torch.FloatTensor] = None,
             ax_noise_variance: Optional[torch.FloatTensor] = None,
             input_ids: torch.LongTensor = None,
@@ -86,7 +88,7 @@ class LamedGemma3ForCausalLM(LamedMetaForCausalLM, Gemma3ForCausalLM):
                 past_key_values,
                 inputs_embeds,
                 labels
-            ) = self.prepare_inputs_for_multimodal(
+            ) = cast(Any, self).prepare_inputs_for_multimodal(
                 input_ids,
                 position_ids,
                 attention_mask,
@@ -94,6 +96,8 @@ class LamedGemma3ForCausalLM(LamedMetaForCausalLM, Gemma3ForCausalLM):
                 labels,
                 images,
                 images_ax,
+                images_noisy,
+                images_ax_noisy,
                 sag_noise_variance,
                 ax_noise_variance,
             )
@@ -189,7 +193,7 @@ class LamedGemma3ForCausalLM(LamedMetaForCausalLM, Gemma3ForCausalLM):
                 _,
                 inputs_embeds,
                 _
-            ) = self.prepare_inputs_for_multimodal(
+            ) = cast(Any, self).prepare_inputs_for_multimodal(
                 inputs,
                 position_ids,
                 attention_mask,
@@ -197,6 +201,8 @@ class LamedGemma3ForCausalLM(LamedMetaForCausalLM, Gemma3ForCausalLM):
                 None,
                 images,
                 images_ax,
+                None,
+                None,
                 None,
                 None,
             )

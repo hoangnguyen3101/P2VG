@@ -137,6 +137,7 @@ def main():
     print("vocab_size: ", model_args.vocab_size)
 
     print("=" * 20 + " Model preparation " + "=" * 20)
+    medgemma_proj_weights = {}
     if "gemma3" in model_args.model_type:
         # Same manual weight loading as custom_train.py for MedGemma/Gemma3
         from transformers import AutoConfig, Gemma3TextConfig
@@ -189,6 +190,14 @@ def main():
         model.load_state_dict(remapped, strict=False)
         model.tie_weights()
         print("Weights tied: lm_head ↔ embed_tokens")
+        for k in [
+            "multi_modal_projector.mm_input_projection_weight",
+            "multi_modal_projector.mm_soft_emb_norm.weight",
+        ]:
+            if k in full_state_dict:
+                medgemma_proj_weights[k] = full_state_dict[k]
+        if medgemma_proj_weights:
+            print(f"[MedGemma] Preserved {len(medgemma_proj_weights)} projector weights for reuse")
         del full_state_dict, remapped
     else:
         raise ValueError(f"Unknown Model Type {model_args.model_type}")
@@ -199,6 +208,16 @@ def main():
     # initialize vision modules on LLM (builds ViT + projector structure)
     if model_args.vision_tower is not None:
         model.get_model().initialize_vision_modules(model_args=model_args)
+        if medgemma_proj_weights and hasattr(model.get_model().mm_projector, "medgemma_projection"):
+            proj = model.get_model().mm_projector
+            w = medgemma_proj_weights["multi_modal_projector.mm_input_projection_weight"]
+            proj.medgemma_projection.weight.data.copy_(w.T)
+            print(f"[MedGemma] Loaded pretrained projection: {w.shape} -> {w.T.shape}")
+            if "multi_modal_projector.mm_soft_emb_norm.weight" in medgemma_proj_weights:
+                n = medgemma_proj_weights["multi_modal_projector.mm_soft_emb_norm.weight"]
+                proj.soft_emb_norm.weight.data.copy_(n)
+                print(f"[MedGemma] Loaded pretrained RMSNorm: {n.shape}")
+            del medgemma_proj_weights
 
     model_args.num_new_tokens = 3  # <im_patch>, <bx_start>, <bx_end>
     model.initialize_vision_tokenizer(model_args, tokenizer)

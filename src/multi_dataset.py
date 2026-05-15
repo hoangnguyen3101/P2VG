@@ -23,14 +23,20 @@ class SpineCapDataset(Dataset):
 
         csv_path = args.amos_train_cap_data_path if mode == "train" else args.amos_validation_cap_data_path
         df = pd.read_csv(csv_path)
-        
+        df.columns = df.columns.str.replace("\ufeff", "", regex=False)
+
+        image_path_col = "images_path" if "images_path" in df.columns else "image_path"
+        required_cols = ["case_id", image_path_col, "Clinician's Notes"]
+        missing_cols = [col for col in required_cols if col not in df.columns]
+        if missing_cols:
+            raise KeyError(
+                f"Missing required columns {missing_cols} in {csv_path}. "
+                f"Available columns: {list(df.columns)}"
+            )
+
         self.case_ids = df["case_id"].values
-        if "images_path" in df.columns:
-            self.base_dirs = df["images_path"].values
-        elif "image_path" in df.columns:
-            self.base_dirs = df["image_path"].values
-        else:
-            raise KeyError("Caption CSV must contain either 'images_path' or 'image_path'.")
+        self.sub_ids = df["sub_id"].values if "sub_id" in df.columns else self.case_ids
+        self.base_dirs = df[image_path_col].values
         self.captions = df["Clinician's Notes"].values
 
     def __nii_img_to_tensor(self, path):
@@ -63,11 +69,7 @@ class SpineCapDataset(Dataset):
         return vol  # [1, D, H, W]
 
     def __is_preprocessed_pka(self, base_dir):
-        abs_base_dir = os.path.abspath(base_dir)
-        return any(
-            token in abs_base_dir
-            for token in ["dataset_PKA", "dataset_ttd", "dataset_ttd_256"]
-        )
+        return "dataset_PKA" in os.path.abspath(base_dir)
 
     def __resolve_base_dir(self, base_dir):
         base_dir = str(base_dir)
@@ -132,7 +134,8 @@ class SpineCapDataset(Dataset):
         for _ in range(max_attempts):
             try:
                 case_id = self.case_ids[current_idx]
-                sub_num = case_id.split('_')[-1] 
+                sub_id = str(self.sub_ids[current_idx])
+                sub_num = sub_id.replace("sub-", "") if sub_id.startswith("sub-") else str(case_id).split('_')[-1]
                 
                 base_dir = self.__resolve_base_dir(self.base_dirs[current_idx])
                 if getattr(self.args, "axt2_enable", False):
@@ -146,9 +149,10 @@ class SpineCapDataset(Dataset):
 
                 sag_noise_variance = self.__sample_udml_variance()
                 ax_noise_variance = self.__sample_udml_variance()
-                image_sag = self.__apply_udml_noise(image_sag, sag_noise_variance)
+                image_sag_noisy = self.__apply_udml_noise(image_sag, sag_noise_variance)
+                image_ax_noisy = image_ax
                 if getattr(self.args, "axt2_enable", False):
-                    image_ax = self.__apply_udml_noise(image_ax, ax_noise_variance)
+                    image_ax_noisy = self.__apply_udml_noise(image_ax, ax_noise_variance)
                 
                 answer = self.captions[current_idx]
                 prompt_question = random.choice(Caption_templates)
@@ -190,6 +194,8 @@ class SpineCapDataset(Dataset):
                 return {
                     "image": image_sag,
                     "image_ax": image_ax,
+                    "image_noisy": image_sag_noisy,
+                    "image_ax_noisy": image_ax_noisy,
                     "input_id": input_id,
                     "label": label,
                     "attention_mask": attention_mask,
