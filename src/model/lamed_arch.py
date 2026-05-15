@@ -53,14 +53,14 @@ class LamedMetaModel:
         self.config.proj_layer_num = model_args.proj_layer_num
         self.config.proj_pooling_type = model_args.proj_pooling_type
         self.config.proj_pooling_size = model_args.proj_pooling_size
+        self.config.medgemma_adapter = getattr(model_args, "medgemma_adapter_enable", getattr(self.config, "medgemma_adapter", False))
         self.config.udml_var_loss_weight = getattr(model_args, "udml_var_loss_weight", 0.1)
         self.config.udml_lm_aux_enable = getattr(model_args, "udml_lm_aux_enable", False)
         self.config.udml_lm_aux_loss_weight = getattr(model_args, "udml_lm_aux_loss_weight", 1.0)
 
         if self.get_vision_tower() is None:
             self.vision_tower = build_vision_tower(self.config)
-            # If you have a more robust vision encoder, try freezing the vision tower by requires_grad_(False)
-            self.vision_tower.requires_grad_(not model_args.freeze_vision_tower)
+        self.vision_tower.requires_grad_(not model_args.freeze_vision_tower)
 
         self.config.mm_hidden_size = self.vision_tower.hidden_size
 
@@ -72,7 +72,7 @@ class LamedMetaModel:
         if self.axt2_enable:
             if getattr(self, 'vision_tower_ax', None) is None:
                 self.vision_tower_ax = build_vision_tower(self.config)
-                self.vision_tower_ax.requires_grad_(not model_args.freeze_vision_tower)
+            self.vision_tower_ax.requires_grad_(not model_args.freeze_vision_tower)
                 
             if getattr(self, 'udml_fusion', None) is None:
                 udml_hidden_size = self.config.mm_hidden_size

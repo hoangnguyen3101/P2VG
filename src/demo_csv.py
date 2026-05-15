@@ -108,6 +108,7 @@ def main():
         proj_layer_num: int = getattr(config, 'proj_layer_num', 2)
         proj_pooling_type: str = getattr(config, 'proj_pooling_type', 'spatial')
         proj_pooling_size: int = getattr(config, 'proj_pooling_size', 2)
+        medgemma_adapter_enable: bool = getattr(config, 'medgemma_adapter', True)
         img_token_id: int = tokenizer.convert_tokens_to_ids("<im_patch>")
         vocab_size: int = len(tokenizer)
         num_new_tokens: int = 3
@@ -145,7 +146,7 @@ def main():
     test_dataloader = DataLoader(
         test_dataset,
         batch_size=1,
-        num_workers=32,
+        num_workers=4,
         pin_memory=True,
         shuffle=False,
         drop_last=False,
@@ -163,9 +164,9 @@ def main():
                 question = sample["question"]
                 answer = sample["answer"]
 
-                input_id = tokenizer(question, return_tensors="pt")["input_ids"].to(
-                    device=device
-                )
+                tokenized = tokenizer(question, return_tensors="pt")
+                input_id = tokenized["input_ids"].to(device=device)
+                attention_mask = tokenized["attention_mask"].to(device=device)
                 image = sample["image"].to(device=device)
                 image_ax = sample["image_ax"].to(device=device) if "image_ax" in sample else None
 
@@ -173,6 +174,7 @@ def main():
                     image,
                     images_ax=image_ax,
                     inputs=input_id,
+                    attention_mask=attention_mask,
                     max_new_tokens=args.max_new_tokens,
                     do_sample=args.do_sample,
                     top_p=args.top_p,

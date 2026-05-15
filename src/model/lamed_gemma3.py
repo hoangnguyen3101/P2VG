@@ -209,10 +209,15 @@ class LamedGemma3ForCausalLM(LamedMetaForCausalLM, Gemma3ForCausalLM):
         else:
             inputs_embeds = self.get_model().embed_tokens(inputs)
 
-        output_ids = super().generate(
-            inputs_embeds=inputs_embeds,
-            **kwargs
-        )
+        generate_kwargs = {
+            "inputs_embeds": inputs_embeds,
+            "attention_mask": attention_mask,
+            **kwargs,
+        }
+        if position_ids is not None:
+            generate_kwargs["position_ids"] = position_ids
+
+        output_ids = super().generate(**generate_kwargs)
         return output_ids
 
 

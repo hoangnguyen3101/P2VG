@@ -78,6 +78,14 @@ class ModelArguments:
     proj_pooling_size: int = field(
         default=2, metadata={"help": "Size of pooling in projector."}
     )
+    medgemma_adapter_enable: bool = field(
+        default=True,
+        metadata={"help": "Use a trainable 3D-ViT-to-MedGemma adapter before MedGemma's pretrained projector."},
+    )
+    freeze_medgemma_projection: bool = field(
+        default=True,
+        metadata={"help": "Freeze MedGemma pretrained projection/RMSNorm and train only the 768->1152 adapter."},
+    )
 
 
 @dataclass
@@ -145,6 +153,10 @@ class DataArguments:
 
 @dataclass
 class TrainingArguments(transformers.TrainingArguments):
+    train_stage: str = field(
+        default="stage2",
+        metadata={"help": "stage1 trains visual adapter/UDML only; stage2 trains LoRA plus visual adapter/UDML."},
+    )
     # lora
     lora_enable: bool = False
     lora_r: int = 8
@@ -154,6 +166,10 @@ class TrainingArguments(transformers.TrainingArguments):
     lora_bias: str = "none"
 
     cache_dir: Optional[str] = field(default=None)
+    visual_adapter_checkpoint: Optional[str] = field(
+        default=None,
+        metadata={"help": "Optional stage1 trainable-only checkpoint to initialize stage2."},
+    )
     remove_unused_columns: bool = field(default=False)
     model_max_length: int = field(
         default=512,  # 512
@@ -283,6 +299,12 @@ def safe_save_model_for_hf_trainer(trainer: transformers.Trainer, output_dir: st
         cpu_state_dict = {key: value.cpu() for key, value in state_dict.items()}
         del state_dict
         trainer._save(output_dir, state_dict=cpu_state_dict)  # noqa
+
+
+def get_trainable_state_dict(model):
+    trainable_keys = {n for n, p in model.named_parameters() if p.requires_grad}
+    full_state = model.state_dict()
+    return {k: v for k, v in full_state.items() if k in trainable_keys}
 
 
 def find_all_linear_names(model):
@@ -496,7 +518,7 @@ def main():
     # initialize vision modules on LLM
     if model_args.vision_tower is not None:
         # Enable MedGemma adapter mode if projector weights are available
-        if medgemma_proj_weights:
+        if medgemma_proj_weights and model_args.medgemma_adapter_enable:
             model.config.medgemma_adapter = True
         model.get_model().initialize_vision_modules(model_args=model_args)
 
@@ -511,6 +533,11 @@ def main():
                 n = medgemma_proj_weights['multi_modal_projector.mm_soft_emb_norm.weight']
                 proj.soft_emb_norm.weight.data.copy_(n)
                 rank0_print(f"[MedGemma] Loaded pretrained RMSNorm: {n.shape}")
+            if model_args.freeze_medgemma_projection:
+                proj.medgemma_projection.requires_grad_(False)
+                proj.soft_emb_norm.requires_grad_(False)
+                proj.adapter.requires_grad_(True)
+                rank0_print("[MedGemma] Frozen pretrained projection/RMSNorm; trainable adapter remains enabled")
             del medgemma_proj_weights
 
     model.config.tune_mm_mlp_adapter = training_args.tune_mm_mlp_adapter = (
@@ -529,6 +556,30 @@ def main():
         model.load_state_dict(ckpt, strict=True)
         rank0_print("load pretrained MLLM weights.")
 
+    if training_args.visual_adapter_checkpoint:
+        ckpt = torch.load(training_args.visual_adapter_checkpoint, map_location="cpu")
+        missing, unexpected = model.load_state_dict(ckpt, strict=False)
+        rank0_print(
+            f"Loaded visual adapter checkpoint from {training_args.visual_adapter_checkpoint} "
+            f"(missing={len(missing)}, unexpected={len(unexpected)})"
+        )
+
+    if training_args.train_stage == "stage1" and training_args.lora_enable:
+        rank0_print("[Stage1] Disabling LoRA; training visual adapter/UDML only.")
+        training_args.lora_enable = False
+
+    if (
+        model_args.medgemma_adapter_enable
+        and model_args.freeze_medgemma_projection
+        and getattr(model.get_model().mm_projector, "medgemma_adapter", False)
+    ):
+        trainable_keywords = ["mm_projector.adapter", "udml_fusion"]
+    else:
+        trainable_keywords = ["mm_projector", "udml_fusion"]
+
+    if not model_args.freeze_vision_tower:
+        trainable_keywords.extend(["vision_tower", "vision_tower_ax"])
+
     if training_args.lora_enable:
         from peft import LoraConfig, get_peft_model
 
@@ -543,22 +594,19 @@ def main():
         rank0_print("Adding LoRA adapters only on LLM.")
         model = get_peft_model(model, lora_config)
 
-        # Enable training for non-LLM components
-        trainable_keywords = [
-            "mm_projector",
-            "embed_tokens",
-            "lm_head",
-            "udml_fusion",
-        ]
-        # Optionally unfreeze vision tower
-        if not model_args.freeze_vision_tower:
-            trainable_keywords.append("vision_tower")
+    if not training_args.lora_enable:
+        model.requires_grad_(False)
 
-        for n, p in model.named_parameters():
-            if any(x in n for x in trainable_keywords):
-                p.requires_grad = True
+    for n, p in model.named_parameters():
+        if any(x in n for x in trainable_keywords):
+            p.requires_grad = True
 
+    if hasattr(model, "print_trainable_parameters"):
         model.print_trainable_parameters()
+    else:
+        trainable = sum(p.numel() for p in model.parameters() if p.requires_grad)
+        total = sum(p.numel() for p in model.parameters())
+        rank0_print(f"trainable params: {trainable:,} || all params: {total:,} || trainable%: {100 * trainable / total:.4f}")
 
     rank0_print("=" * 20 + " Dataset preparation " + "=" * 20)
     data_args.max_length = training_args.model_max_length
@@ -616,16 +664,16 @@ def main():
     model.config.use_cache = True
 
     rank0_print("=" * 20 + " Save model " + "=" * 20)
-    if training_args.lora_enable:
-        state_dict_with_lora = model.state_dict()
-        torch.save(
-            state_dict_with_lora,
-            os.path.join(training_args.output_dir, "model_with_lora.bin"),
-        )
-    else:
-        safe_save_model_for_hf_trainer(
-            trainer=trainer, output_dir=training_args.output_dir
-        )
+    trainable_state_dict = get_trainable_state_dict(model)
+    torch.save(
+        trainable_state_dict,
+        os.path.join(training_args.output_dir, "model_trainable.bin"),
+    )
+    torch.save(
+        trainable_state_dict,
+        os.path.join(training_args.output_dir, "model_with_lora.bin"),
+    )
+    rank0_print(f"Saved final trainable params ({len(trainable_state_dict)} keys)")
 
 
 from transformers import TrainerCallback
@@ -637,9 +685,27 @@ class MyCallback(TrainerCallback):
     def __init__(self, trainer, tokenizer):
         self._trainer = trainer
         self._tok = tokenizer
+        self.best_eval_loss = None
+
+    def _save_trainable(self, path):
+        trainable_state_dict = get_trainable_state_dict(self._trainer.model)
+        torch.save(trainable_state_dict, path)
+        print(f"Saved trainable params ({len(trainable_state_dict)} keys) to {path}")
 
     def on_evaluate(self, args, state, control, **kwargs):
         print("evaluating..")
+        metrics = kwargs.get("metrics") or {}
+        eval_loss = metrics.get("eval_loss")
+        if eval_loss is not None and (self.best_eval_loss is None or eval_loss < self.best_eval_loss):
+            self.best_eval_loss = eval_loss
+            best_path = os.path.join(args.output_dir, "model_trainable_best.bin")
+            self._save_trainable(best_path)
+            compat_path = os.path.join(args.output_dir, "model_with_lora_best.bin")
+            self._save_trainable(compat_path)
+            with open(os.path.join(args.output_dir, "best_eval.txt"), "w") as f:
+                f.write(f"step={state.global_step}\neval_loss={eval_loss}\n")
+            print(f"New best eval_loss={eval_loss} at step={state.global_step}")
+
         vl = self._trainer.get_eval_dataloader()
 
         self._trainer.model.eval()
@@ -689,13 +755,8 @@ class MyCallback(TrainerCallback):
 
     def on_save(self, args, state, control, **kwargs):
         print(f"EPOCH {state.global_step}: SAVING.....\n")
-        # Only save trainable parameters to reduce checkpoint size (~4GB vs ~16GB)
-        trainable_keys = {n for n, p in self._trainer.model.named_parameters() if p.requires_grad}
-        full_state = self._trainer.model.state_dict()
-        trainable_state_dict = {k: v for k, v in full_state.items() if k in trainable_keys}
         save_path = os.path.join(args.output_dir, f"model_with_lora_{state.global_step}.bin")
-        torch.save(trainable_state_dict, save_path)
-        print(f"Saved trainable params ({len(trainable_state_dict)} keys) to {save_path}")
+        self._save_trainable(save_path)
 
 
 if __name__ == "__main__":

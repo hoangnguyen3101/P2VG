@@ -72,6 +72,10 @@ class ModelArguments:
     proj_pooling_size: int = field(
         default=2, metadata={"help": "Size of pooling in Perceiver."}
     )
+    medgemma_adapter_enable: bool = field(
+        default=True,
+        metadata={"help": "Use the 3D-ViT-to-MedGemma adapter projector path."},
+    )
 
 
 @dataclass
@@ -203,7 +207,7 @@ def main():
         raise ValueError(f"Unknown Model Type {model_args.model_type}")
 
     # Enable MedGemma adapter mode
-    model.config.medgemma_adapter = True
+    model.config.medgemma_adapter = model_args.medgemma_adapter_enable
 
     # initialize vision modules on LLM (builds ViT + projector structure)
     if model_args.vision_tower is not None:
@@ -281,6 +285,7 @@ def main():
     print("=" * 20 + " Save pretrained " + "=" * 20)
     model.config.save_pretrained(training_args.output_dir)
     model.save_pretrained(training_args.output_dir)
+    torch.save(model.state_dict(), os.path.join(training_args.output_dir, "merged_model.bin"))
     tokenizer.save_pretrained(training_args.output_dir)
 
     print("=" * 20 + " Finish " + "=" * 20)
