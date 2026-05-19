@@ -51,7 +51,7 @@ class ModelArguments:
     freeze_vision_tower: bool = field(default=False)
 
     # axial (dual-encoder)
-    axt2_enable: bool = field(default=True, metadata={"help": "Enable axial T2 dual encoder."})
+    axt2_enable: bool = field(default=False, metadata={"help": "Enable axial T2 dual encoder."})
     axial_only: bool = field(default=False, metadata={"help": "Use axial encoder only (no sagittal)."})
 
     # projector

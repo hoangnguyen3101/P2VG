@@ -113,11 +113,11 @@ class DataArguments:
     )
 
     sagittal_modality: str = field(
-        default="t1",
+        default="fused",
         metadata={"help": "Modality for sagittal images (t1, t2, fused)."}
     )
     udml_noise_enable: bool = field(
-        default=True,
+        default=False,
         metadata={"help": "Inject controlled Gaussian noise for UDML uncertainty supervision."},
     )
     udml_noise_prob: float = field(default=0.2)
@@ -126,7 +126,7 @@ class DataArguments:
     udml_noise_std_scale: float = field(default=0.02)
     udml_var_loss_weight: float = field(default=0.1)
     udml_lm_aux_enable: bool = field(
-        default=True,
+        default=False,
         metadata={"help": "Add sagittal-only and axial-only LM losses, analogous to UDML unimodal CE losses."},
     )
     udml_lm_aux_loss_weight: float = field(default=1.0)
@@ -573,9 +573,12 @@ def main():
         and model_args.freeze_medgemma_projection
         and getattr(model.get_model().mm_projector, "medgemma_adapter", False)
     ):
-        trainable_keywords = ["mm_projector.adapter", "udml_fusion"]
+        trainable_keywords = ["mm_projector.adapter"]
     else:
-        trainable_keywords = ["mm_projector", "udml_fusion"]
+        trainable_keywords = ["mm_projector"]
+
+    if model_args.axt2_enable:
+        trainable_keywords.append("udml_fusion")
 
     if not model_args.freeze_vision_tower:
         trainable_keywords.extend(["vision_tower", "vision_tower_ax"])

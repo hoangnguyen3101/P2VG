@@ -15,13 +15,15 @@ err() { echo "[ERR] $*" >&2; }
 
 export PYTHONPATH="$P2VG_ROOT:$P2VG_ROOT/src${PYTHONPATH:+:$PYTHONPATH}"
 export PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True
+export MPLCONFIGDIR="${MPLCONFIGDIR:-/tmp/matplotlib-$USER}"
 export CUDA_VISIBLE_DEVICES="${CUDA_VISIBLE_DEVICES:-0}"
 
-FOLD="${1:-2}"
-OUTPUT_SUFFIX="${2:-}"
+FOLD="${1:-3}"
+OUTPUT_SUFFIX="${2:-_spider_noaxial}"
 TRAIN_STAGE="${TRAIN_STAGE:-both}"
 
-DEFAULT_DATA_ROOT="/storage/hoangnv/dataset_ttd_256"
+DEFAULT_DATA_ROOT="/home/hoangnv/AICD_HA/SPINE/dataset/SPIDER/output_fused_256"
+DEFAULT_SPLIT_ROOT="/home/hoangnv/AICD_HA/SPINE/dataset/SPIDER/kfold_splits/S1_composite_grok/fold_3_image"
 DATA_ROOT="${DATA_ROOT:-$DEFAULT_DATA_ROOT}"
 WEIGHTS_DIR="${WEIGHTS_DIR:-$P2VG_ROOT/weights}"
 OUTPUT_ROOT="${OUTPUT_ROOT:-/storage/hoangnv/P2VG_outputs_dynamicfusion/fold2_1}"
@@ -36,8 +38,8 @@ if [ -z "$DEEPSPEED_BIN" ]; then
     exit 1
 fi
 
-TRAIN_CSV="${TRAIN_CSV:-$DATA_ROOT/report/train.csv}"
-VAL_CSV="${VAL_CSV:-$DATA_ROOT/report/val.csv}"
+TRAIN_CSV="${TRAIN_CSV:-$DEFAULT_SPLIT_ROOT/train.csv}"
+VAL_CSV="${VAL_CSV:-$DEFAULT_SPLIT_ROOT/val.csv}"
 if [ ! -f "$TRAIN_CSV" ] || [ ! -f "$VAL_CSV" ]; then
     err "Missing dataset CSV files under DATA_ROOT=$DATA_ROOT"
     exit 1
@@ -47,12 +49,17 @@ if [ ! -f "$WEIGHTS_DIR/pretrained_ViT.bin" ]; then
     exit 1
 fi
 
-export WANDB_PROJECT="${WANDB_PROJECT:-P2VG_UDML}"
+export WANDB_PROJECT="${WANDB_PROJECT:-P2VG_SPINED}"
 USER_WANDB_NAME="${WANDB_NAME:-}"
 LORA_R="${LORA_R:-8}"
 LORA_ALPHA="${LORA_ALPHA:-32}"
 UDML_NOISE_PROB="${UDML_NOISE_PROB:-0.2}"
 UDML_NOISE_MAX="${UDML_NOISE_MAX:-6}"
+AXT2_ENABLE="${AXT2_ENABLE:-False}"
+AXIAL_ONLY="${AXIAL_ONLY:-False}"
+SAGITTAL_MODALITY="${SAGITTAL_MODALITY:-fused}"
+UDML_NOISE_ENABLE="${UDML_NOISE_ENABLE:-False}"
+UDML_LM_AUX_ENABLE="${UDML_LM_AUX_ENABLE:-False}"
 
 best_trainable_path() {
     local dir="$1"
@@ -70,19 +77,21 @@ best_trainable_path() {
 run_stage() {
     local stage="$1"
     local output_dir="$OUTPUT_ROOT/fold${FOLD}${OUTPUT_SUFFIX}_${stage}"
-    local lora_enable num_epochs lr freeze_projection visual_ckpt
+    local lora_enable num_epochs lr freeze_projection freeze_vision visual_ckpt
 
     if [ "$stage" = "stage1" ]; then
         lora_enable="${LORA_ENABLE:-False}"
         num_epochs="${STAGE1_EPOCHS:-${NUM_TRAIN_EPOCHS:-5}}"
         lr="${STAGE1_LEARNING_RATE:-${LEARNING_RATE:-1e-4}}"
         freeze_projection="${FREEZE_MEDGEMMA_PROJECTION:-True}"
+        freeze_vision="${STAGE1_FREEZE_VISION_TOWER:-${FREEZE_VISION_TOWER:-False}}"
         visual_ckpt=""
     elif [ "$stage" = "stage2" ]; then
         lora_enable="${LORA_ENABLE:-True}"
         num_epochs="${STAGE2_EPOCHS:-${NUM_TRAIN_EPOCHS:-15}}"
         lr="${STAGE2_LEARNING_RATE:-${LEARNING_RATE:-3e-5}}"
         freeze_projection="${FREEZE_MEDGEMMA_PROJECTION:-False}"
+        freeze_vision="${STAGE2_FREEZE_VISION_TOWER:-${FREEZE_VISION_TOWER:-False}}"
         visual_ckpt="${VISUAL_ADAPTER_CHECKPOINT:-}"
         if [ -z "$visual_ckpt" ]; then
             visual_ckpt="$(best_trainable_path "$OUTPUT_ROOT/fold${FOLD}${OUTPUT_SUFFIX}_stage1")"
@@ -108,8 +117,9 @@ run_stage() {
     echo "DEEPSPEED  : $DEEPSPEED_BIN"
     echo "STAGE      : $stage"
     echo "LORA       : enable=$lora_enable r=$LORA_R alpha=$LORA_ALPHA"
-    echo "MEDGEMMA   : freeze_projection=$freeze_projection"
-    echo "UDML_NOISE : prob=$UDML_NOISE_PROB max=$UDML_NOISE_MAX"
+    echo "IMAGE      : sagittal_modality=$SAGITTAL_MODALITY axt2_enable=$AXT2_ENABLE axial_only=$AXIAL_ONLY"
+    echo "MEDGEMMA   : freeze_projection=$freeze_projection freeze_vision_tower=$freeze_vision"
+    echo "UDML_NOISE : enable=$UDML_NOISE_ENABLE prob=$UDML_NOISE_PROB max=$UDML_NOISE_MAX lm_aux=$UDML_LM_AUX_ENABLE"
     if [ -n "$visual_ckpt" ]; then
         echo "VISUAL_CKPT: $visual_ckpt"
     fi
@@ -124,9 +134,9 @@ run_stage() {
         --lora_r "$LORA_R"
         --lora_alpha "$LORA_ALPHA"
         --vision_tower vit3d
-        --axt2_enable True
-        --axial_only False
-        --freeze_vision_tower True
+        --axt2_enable "$AXT2_ENABLE"
+        --axial_only "$AXIAL_ONLY"
+        --freeze_vision_tower "$freeze_vision"
         --pretrain_vision_model "$WEIGHTS_DIR/pretrained_ViT.bin"
         --medgemma_adapter_enable True
         --freeze_medgemma_projection "$freeze_projection"
@@ -135,14 +145,14 @@ run_stage() {
         --data_root "$DATA_ROOT"
         --amos_train_cap_data_path "$TRAIN_CSV"
         --amos_validation_cap_data_path "$VAL_CSV"
-        --sagittal_modality fused
-        --udml_noise_enable True
+        --sagittal_modality "$SAGITTAL_MODALITY"
+        --udml_noise_enable "$UDML_NOISE_ENABLE"
         --udml_noise_prob "$UDML_NOISE_PROB"
         --udml_noise_min 2
         --udml_noise_max "$UDML_NOISE_MAX"
         --udml_noise_std_scale 0.02
         --udml_var_loss_weight 0.1
-        --udml_lm_aux_enable "${UDML_LM_AUX_ENABLE:-True}"
+        --udml_lm_aux_enable "$UDML_LM_AUX_ENABLE"
         --udml_lm_aux_loss_weight 1.0
         --output_dir "$output_dir"
         --num_train_epochs "$num_epochs"
@@ -171,6 +181,13 @@ run_stage() {
     fi
     train_cmd+=(--deepspeed "$P2VG_ROOT/configs/ds_config_zero2.json")
 
+    if [ "${DRY_RUN:-0}" = "1" ]; then
+        printf 'DRY_RUN command:'
+        printf ' %q' "${train_cmd[@]}"
+        printf '\n'
+        return
+    fi
+
     "${train_cmd[@]}"
 
     if [ "$stage" = "stage1" ]; then
@@ -189,7 +206,8 @@ run_stage() {
     "$PYTHON_BIN" src/merge_lora_weights_and_save_hf_model.py \
         --model_name_or_path "google/medgemma-1.5-4b-it" \
         --model_type gemma3 \
-        --axt2_enable True \
+        --axt2_enable "$AXT2_ENABLE" \
+        --axial_only "$AXIAL_ONLY" \
         --pretrain_vision_model "$WEIGHTS_DIR/pretrained_ViT.bin" \
         --medgemma_adapter_enable True \
         --mm_projector_type spp \
