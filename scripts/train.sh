@@ -18,15 +18,14 @@ export PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True
 export MPLCONFIGDIR="${MPLCONFIGDIR:-/tmp/matplotlib-$USER}"
 export CUDA_VISIBLE_DEVICES="${CUDA_VISIBLE_DEVICES:-0}"
 
-FOLD="${1:-3}"
-OUTPUT_SUFFIX="${2:-_spider_noaxial}"
+OUTPUT_SUFFIX="${1:-_spider_noaxial}"
 TRAIN_STAGE="${TRAIN_STAGE:-both}"
 
-DEFAULT_DATA_ROOT="/home/hoangnv/AICD_HA/SPINE/dataset/SPIDER/output_fused_256"
-DEFAULT_SPLIT_ROOT="/home/hoangnv/AICD_HA/SPINE/dataset/SPIDER/kfold_splits/S1_composite_grok/fold_3_image"
+DEFAULT_DATA_ROOT="/storage/hoangnv/dataset_PKA_Wavelate"
+DEFAULT_SPLIT_ROOT="/storage/hoangnv/dataset_PKA_Wavelate"
 DATA_ROOT="${DATA_ROOT:-$DEFAULT_DATA_ROOT}"
 WEIGHTS_DIR="${WEIGHTS_DIR:-$P2VG_ROOT/weights}"
-OUTPUT_ROOT="${OUTPUT_ROOT:-/storage/hoangnv/P2VG_outputs_dynamicfusion/fold2_1}"
+OUTPUT_ROOT="${OUTPUT_ROOT:-/storage/hoangnv/P2VG_outputs_dynamicfusion/dataset_PKA_Wavelate/v2}"
 PYTHON_BIN="${PYTHON_BIN:-$(which python 2>/dev/null || echo '')}"
 DEEPSPEED_BIN="${DEEPSPEED_BIN:-$(which deepspeed 2>/dev/null || echo '')}"
 if [ -z "$PYTHON_BIN" ]; then
@@ -58,8 +57,7 @@ UDML_NOISE_MAX="${UDML_NOISE_MAX:-6}"
 AXT2_ENABLE="${AXT2_ENABLE:-False}"
 AXIAL_ONLY="${AXIAL_ONLY:-False}"
 SAGITTAL_MODALITY="${SAGITTAL_MODALITY:-fused}"
-UDML_NOISE_ENABLE="${UDML_NOISE_ENABLE:-False}"
-UDML_LM_AUX_ENABLE="${UDML_LM_AUX_ENABLE:-False}"
+# UDML_NOISE_ENABLE và UDML_LM_AUX_ENABLE được set per-stage trong run_stage()
 
 best_trainable_path() {
     local dir="$1"
@@ -76,7 +74,7 @@ best_trainable_path() {
 
 run_stage() {
     local stage="$1"
-    local output_dir="$OUTPUT_ROOT/fold${FOLD}${OUTPUT_SUFFIX}_${stage}"
+    local output_dir="$OUTPUT_ROOT/${OUTPUT_SUFFIX}_${stage}"
     local lora_enable num_epochs lr freeze_projection freeze_vision visual_ckpt
 
     if [ "$stage" = "stage1" ]; then
@@ -86,6 +84,9 @@ run_stage() {
         freeze_projection="${FREEZE_MEDGEMMA_PROJECTION:-True}"
         freeze_vision="${STAGE1_FREEZE_VISION_TOWER:-${FREEZE_VISION_TOWER:-False}}"
         visual_ckpt=""
+        # Stage1: vision tower đang train, tắt noise để estimator không học trên moving target
+        local udml_noise_enable="False"
+        local udml_lm_aux_enable="${UDML_LM_AUX_ENABLE:-False}"
     elif [ "$stage" = "stage2" ]; then
         lora_enable="${LORA_ENABLE:-True}"
         num_epochs="${STAGE2_EPOCHS:-${NUM_TRAIN_EPOCHS:-15}}"
@@ -93,8 +94,11 @@ run_stage() {
         freeze_projection="${FREEZE_MEDGEMMA_PROJECTION:-False}"
         freeze_vision="${STAGE2_FREEZE_VISION_TOWER:-${FREEZE_VISION_TOWER:-False}}"
         visual_ckpt="${VISUAL_ADAPTER_CHECKPOINT:-}"
+        # Stage2: encoder đã ổn định, bật noise để train variance estimator
+        local udml_noise_enable="${UDML_NOISE_ENABLE:-True}"
+        local udml_lm_aux_enable="${UDML_LM_AUX_ENABLE:-True}"
         if [ -z "$visual_ckpt" ]; then
-            visual_ckpt="$(best_trainable_path "$OUTPUT_ROOT/fold${FOLD}${OUTPUT_SUFFIX}_stage1")"
+            visual_ckpt="$(best_trainable_path "$OUTPUT_ROOT/${OUTPUT_SUFFIX}_stage1")"
         fi
         if [ -z "$visual_ckpt" ]; then
             err "Stage2 requires a stage1 checkpoint. Run TRAIN_STAGE=stage1 first or set VISUAL_ADAPTER_CHECKPOINT."
@@ -108,7 +112,7 @@ run_stage() {
     if [ -n "$USER_WANDB_NAME" ]; then
         export WANDB_NAME="$USER_WANDB_NAME"
     else
-        export WANDB_NAME="fold${FOLD}${OUTPUT_SUFFIX}_${stage}"
+        export WANDB_NAME="${OUTPUT_SUFFIX}_${stage}"
     fi
     echo "P2VG_ROOT  : $P2VG_ROOT"
     echo "DATA_ROOT  : $DATA_ROOT"
@@ -119,7 +123,7 @@ run_stage() {
     echo "LORA       : enable=$lora_enable r=$LORA_R alpha=$LORA_ALPHA"
     echo "IMAGE      : sagittal_modality=$SAGITTAL_MODALITY axt2_enable=$AXT2_ENABLE axial_only=$AXIAL_ONLY"
     echo "MEDGEMMA   : freeze_projection=$freeze_projection freeze_vision_tower=$freeze_vision"
-    echo "UDML_NOISE : enable=$UDML_NOISE_ENABLE prob=$UDML_NOISE_PROB max=$UDML_NOISE_MAX lm_aux=$UDML_LM_AUX_ENABLE"
+    echo "UDML_NOISE : enable=$udml_noise_enable prob=$UDML_NOISE_PROB max=$UDML_NOISE_MAX lm_aux=$udml_lm_aux_enable"
     if [ -n "$visual_ckpt" ]; then
         echo "VISUAL_CKPT: $visual_ckpt"
     fi
@@ -146,13 +150,13 @@ run_stage() {
         --amos_train_cap_data_path "$TRAIN_CSV"
         --amos_validation_cap_data_path "$VAL_CSV"
         --sagittal_modality "$SAGITTAL_MODALITY"
-        --udml_noise_enable "$UDML_NOISE_ENABLE"
+        --udml_noise_enable "$udml_noise_enable"
         --udml_noise_prob "$UDML_NOISE_PROB"
         --udml_noise_min 2
         --udml_noise_max "$UDML_NOISE_MAX"
         --udml_noise_std_scale 0.02
         --udml_var_loss_weight 0.1
-        --udml_lm_aux_enable "$UDML_LM_AUX_ENABLE"
+        --udml_lm_aux_enable "$udml_lm_aux_enable"
         --udml_lm_aux_loss_weight 1.0
         --output_dir "$output_dir"
         --num_train_epochs "$num_epochs"

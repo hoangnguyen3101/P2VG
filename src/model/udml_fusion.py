@@ -54,11 +54,17 @@ class UDMLFusion(nn.Module):
         sag_aux = self.shared_aux_head(torch.cat([sag_pool, zeros_ax], dim=-1))
         ax_aux = self.shared_aux_head(torch.cat([zeros_sag, ax_pool], dim=-1))
 
-        sag_depend = sag_aux.abs().mean(dim=0, keepdim=True).sum(dim=1, keepdim=True) + self.eps
-        ax_depend = ax_aux.abs().mean(dim=0, keepdim=True).sum(dim=1, keepdim=True) + self.eps
+        # Dependency: proxy for d^m1 = ||π^τ - π^m2||₁ from UDML paper.
+        # How much does the fused output change when each modality is removed?
+        sag_contrib = (full_aux - ax_aux).abs().mean(dim=-1, keepdim=True)
+        ax_contrib = (full_aux - sag_aux).abs().mean(dim=-1, keepdim=True)
+        contrib_denom = sag_contrib + ax_contrib + self.eps
+        alpha_sag = 2.0 * sag_contrib / contrib_denom
+        alpha_ax = 2.0 * ax_contrib / contrib_denom
 
-        weight_sag = target_weight_sag / sag_depend
-        weight_ax = target_weight_ax / ax_depend
+        # effective_weight ∝ α / ρ  (higher contribution + lower uncertainty → higher weight)
+        weight_sag = alpha_sag * target_weight_sag
+        weight_ax = alpha_ax * target_weight_ax
         weight_denom = weight_sag + weight_ax + self.eps
         weight_sag = 2.0 * weight_sag / weight_denom
         weight_ax = 2.0 * weight_ax / weight_denom
@@ -73,8 +79,10 @@ class UDMLFusion(nn.Module):
             "ax_scale": ax_scale.detach(),
             "weight_sag": weight_sag.detach(),
             "weight_ax": weight_ax.detach(),
-            "sag_depend": sag_depend.detach(),
-            "ax_depend": ax_depend.detach(),
+            "sag_contrib": sag_contrib.detach(),
+            "ax_contrib": ax_contrib.detach(),
+            "alpha_sag": alpha_sag.detach(),
+            "alpha_ax": alpha_ax.detach(),
             "full_aux": full_aux.detach(),
             "sag_aux": sag_aux.detach(),
             "ax_aux": ax_aux.detach(),
