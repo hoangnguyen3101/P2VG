@@ -65,7 +65,7 @@ class SpineCapDataset(Dataset):
 
         # img_data is (H, W, D) -> (1, D, H, W)
         vol = torch.from_numpy(img_data).permute(2, 0, 1).unsqueeze(0)  # [1, D, H, W]
-        
+
         return vol  # [1, D, H, W]
 
     def __is_preprocessed_pka(self, base_dir):

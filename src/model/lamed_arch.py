@@ -79,6 +79,8 @@ class LamedMetaModel:
                 self.udml_fusion = UDMLFusion(
                     hidden_size=udml_hidden_size,
                     var_loss_weight=self.config.udml_var_loss_weight,
+                    warmup_steps=getattr(self.config, "udml_warmup_steps", 0),
+                    depend_momentum=getattr(self.config, "udml_depend_momentum", 0.9),
                 )
 
 

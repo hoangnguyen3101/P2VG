@@ -304,7 +304,14 @@ def safe_save_model_for_hf_trainer(trainer: transformers.Trainer, output_dir: st
 def get_trainable_state_dict(model):
     trainable_keys = {n for n, p in model.named_parameters() if p.requires_grad}
     full_state = model.state_dict()
-    return {k: v for k, v in full_state.items() if k in trainable_keys}
+    out = {k: v for k, v in full_state.items() if k in trainable_keys}
+    # UDML dependency lives in buffers (not parameters), so it is not in
+    # trainable_keys. Persist it so inference divides by the same dependency
+    # ratio that training learned instead of falling back to 1.0.
+    for k, v in full_state.items():
+        if "udml_fusion" in k and (k.endswith("sag_depend") or k.endswith("ax_depend")):
+            out[k] = v
+    return out
 
 
 def find_all_linear_names(model):

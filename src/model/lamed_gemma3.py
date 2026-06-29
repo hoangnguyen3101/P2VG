@@ -169,7 +169,28 @@ class LamedGemma3ForCausalLM(LamedMetaForCausalLM, Gemma3ForCausalLM):
                 outputs.loss = outputs.loss + lm_aux_loss
             elif isinstance(outputs, tuple) and len(outputs) > 0:
                 outputs = (outputs[0] + lm_aux_loss,) + outputs[1:]
+
+            # Measure per-modality dependency from the unimodal outputs (the same
+            # heads that produce the aux CE loss), detached and EMA-buffered, so
+            # UDMLFusion can divide the fusion weight by it on the next step.
+            # This mirrors the reference: args.audio_depend = mean(|out_a|).
+            if hasattr(model, "udml_fusion"):
+                with torch.no_grad():
+                    valid = original_labels != -100
+                    sag_dep = self._unimodal_dependency(sag_outputs, valid)
+                    ax_dep = self._unimodal_dependency(ax_outputs, valid)
+                    model.udml_fusion.update_dependency(sag_dep, ax_dep)
         return outputs
+
+    @staticmethod
+    def _unimodal_dependency(outputs, valid_mask):
+        """mean(|logits|) over the supervised answer positions -- a proxy for
+        how strongly a single modality drives the prediction (UDML's d_m)."""
+        logits = outputs.logits if hasattr(outputs, "logits") else outputs[1]
+        magnitude = logits.float().abs().mean(dim=-1)  # [B, T]
+        if valid_mask is not None and valid_mask.any():
+            magnitude = magnitude[valid_mask]
+        return magnitude.mean()
 
 
     @torch.no_grad()

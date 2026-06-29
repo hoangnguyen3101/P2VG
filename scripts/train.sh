@@ -21,11 +21,11 @@ export CUDA_VISIBLE_DEVICES="${CUDA_VISIBLE_DEVICES:-0}"
 OUTPUT_SUFFIX="${1:-_spider_noaxial}"
 TRAIN_STAGE="${TRAIN_STAGE:-both}"
 
-DEFAULT_DATA_ROOT="/storage/hoangnv/dataset_PKA_Wavelate"
-DEFAULT_SPLIT_ROOT="/storage/hoangnv/dataset_PKA_Wavelate"
+DEFAULT_DATA_ROOT="$P2VG_ROOT/dataset_pka"
+DEFAULT_SPLIT_ROOT="$P2VG_ROOT/dataset_pka"
 DATA_ROOT="${DATA_ROOT:-$DEFAULT_DATA_ROOT}"
 WEIGHTS_DIR="${WEIGHTS_DIR:-$P2VG_ROOT/weights}"
-OUTPUT_ROOT="${OUTPUT_ROOT:-/storage/hoangnv/P2VG_outputs_dynamicfusion/dataset_PKA_Wavelate/v2}"
+OUTPUT_ROOT="${OUTPUT_ROOT:-/storage/hoangnv/P2VG_outputs_dynamicfusion/dataset_pka/v1}"
 PYTHON_BIN="${PYTHON_BIN:-$(which python 2>/dev/null || echo '')}"
 DEEPSPEED_BIN="${DEEPSPEED_BIN:-$(which deepspeed 2>/dev/null || echo '')}"
 if [ -z "$PYTHON_BIN" ]; then
@@ -37,8 +37,8 @@ if [ -z "$DEEPSPEED_BIN" ]; then
     exit 1
 fi
 
-TRAIN_CSV="${TRAIN_CSV:-$DEFAULT_SPLIT_ROOT/train.csv}"
-VAL_CSV="${VAL_CSV:-$DEFAULT_SPLIT_ROOT/val.csv}"
+TRAIN_CSV="${TRAIN_CSV:-$DEFAULT_SPLIT_ROOT/report/train.csv}"
+VAL_CSV="${VAL_CSV:-$DEFAULT_SPLIT_ROOT/report/val.csv}"
 if [ ! -f "$TRAIN_CSV" ] || [ ! -f "$VAL_CSV" ]; then
     err "Missing dataset CSV files under DATA_ROOT=$DATA_ROOT"
     exit 1
@@ -50,13 +50,13 @@ fi
 
 export WANDB_PROJECT="${WANDB_PROJECT:-P2VG_SPINED}"
 USER_WANDB_NAME="${WANDB_NAME:-}"
-LORA_R="${LORA_R:-8}"
-LORA_ALPHA="${LORA_ALPHA:-32}"
-UDML_NOISE_PROB="${UDML_NOISE_PROB:-0.2}"
+LORA_R="${LORA_R:-16}"
+LORA_ALPHA="${LORA_ALPHA:-64}"
+UDML_NOISE_PROB="${UDML_NOISE_PROB:-0.5}"
 UDML_NOISE_MAX="${UDML_NOISE_MAX:-6}"
-AXT2_ENABLE="${AXT2_ENABLE:-False}"
+AXT2_ENABLE="${AXT2_ENABLE:-True}"
 AXIAL_ONLY="${AXIAL_ONLY:-False}"
-SAGITTAL_MODALITY="${SAGITTAL_MODALITY:-fused}"
+SAGITTAL_MODALITY="${SAGITTAL_MODALITY:-t2}"
 # UDML_NOISE_ENABLE và UDML_LM_AUX_ENABLE được set per-stage trong run_stage()
 
 best_trainable_path() {
@@ -79,7 +79,7 @@ run_stage() {
 
     if [ "$stage" = "stage1" ]; then
         lora_enable="${LORA_ENABLE:-False}"
-        num_epochs="${STAGE1_EPOCHS:-${NUM_TRAIN_EPOCHS:-5}}"
+        num_epochs="${STAGE1_EPOCHS:-${NUM_TRAIN_EPOCHS:-10}}"
         lr="${STAGE1_LEARNING_RATE:-${LEARNING_RATE:-1e-4}}"
         freeze_projection="${FREEZE_MEDGEMMA_PROJECTION:-True}"
         freeze_vision="${STAGE1_FREEZE_VISION_TOWER:-${FREEZE_VISION_TOWER:-False}}"
