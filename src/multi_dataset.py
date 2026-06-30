@@ -93,9 +93,13 @@ class SpineCapDataset(Dataset):
         )
 
     def __load_axt2_tensor(self, base_dir, sub_num, case_id):
-        ax_path = os.path.join(base_dir, f"sub-{sub_num}_axt2.nii.gz")
-        if os.path.exists(ax_path):
-            return self.__nii_img_to_tensor(ax_path)
+        candidate_paths = [
+            os.path.join(base_dir, f"sub-{sub_num}_axt2.nii.gz"),
+            os.path.join(base_dir, f"{sub_num}_axt2.nii.gz"),
+        ]
+        for ax_path in candidate_paths:
+            if os.path.exists(ax_path):
+                return self.__nii_img_to_tensor(ax_path)
 
         if self.__is_preprocessed_pka(base_dir):
             raise FileNotFoundError(

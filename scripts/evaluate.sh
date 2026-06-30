@@ -14,17 +14,17 @@ cd "$P2VG_ROOT"
 
 export PYTHONPATH="$P2VG_ROOT:$P2VG_ROOT/src${PYTHONPATH:+:$PYTHONPATH}"
 
-OUTPUT_SUFFIX="${1:-_spider_noaxial}"
+OUTPUT_SUFFIX="${1:-medgemma_udml}"
 MODEL_SUBDIR="${2:-merged_hf}"
 
-OUTPUT_ROOT="${OUTPUT_ROOT:-/storage/hoangnv/P2VG_outputs_dynamicfusion/dataset_PKA_Wavelate/v2}"
+OUTPUT_ROOT="${OUTPUT_ROOT:-/storage/hoangnv/P2VG_outputs_dynamicfusion/dataset_lumbar/3006}"
 RUN_DIR="$OUTPUT_ROOT/${OUTPUT_SUFFIX}_stage2"
-DATA_ROOT="${DATA_ROOT:-/storage/hoangnv/dataset_PKA_Wavelate}"
-VAL_CSV="${VAL_CSV:-/storage/hoangnv/dataset_PKA_Wavelate/report/val.csv}"
+DATA_ROOT="${DATA_ROOT:-/storage/hoangnv/dataset_lumbar_256}"
+VAL_CSV="${VAL_CSV:-/storage/hoangnv/dataset_lumbar_256/report/test.csv}"
 MODEL_PATH="${MODEL_PATH:-$RUN_DIR/$MODEL_SUBDIR}"
 OUTPUT_DIR="${OUTPUT_DIR:-$RUN_DIR/eval}"
 PYTHON_BIN="${PYTHON_BIN:-$(which python 2>/dev/null || echo python)}"
-AXT2_ENABLE="${AXT2_ENABLE:-False}"
+AXT2_ENABLE="${AXT2_ENABLE:-True}"
 SAGITTAL_MODALITY="${SAGITTAL_MODALITY:-fused}"
 
 echo "Model     : $MODEL_PATH"

@@ -32,10 +32,10 @@ def parse_args(args=None):
     parser.add_argument("--max_length", type=int, default=512)
     parser.add_argument("--max_new_tokens", type=int, default=256)
     parser.add_argument("--num_beams", type=int, default=1)
-    parser.add_argument("--repetition_penalty", type=float, default=1.1)
+    # parser.add_argument("--repetition_penalty", type=float, default=1.1)
     parser.add_argument("--do_sample", action="store_true", default=False)
-    parser.add_argument("--top_p", type=float, default=0.9)
-    parser.add_argument("--temperature", type=float, default=0.7)
+    # parser.add_argument("--top_p", type=float, default=0.9)
+    # parser.add_argument("--temperature", type=float, default=0.7)
     parser.add_argument("--device", type=str, default="cuda", choices=["cuda", "cpu"])
 
     # data
@@ -179,10 +179,6 @@ def main():
                     attention_mask=attention_mask,
                     max_new_tokens=args.max_new_tokens,
                     num_beams=args.num_beams,
-                    repetition_penalty=args.repetition_penalty,
-                    do_sample=args.do_sample,
-                    top_p=args.top_p,
-                    temperature=args.temperature,
                 )
                 generated_texts = tokenizer.batch_decode(
                     generation, skip_special_tokens=True

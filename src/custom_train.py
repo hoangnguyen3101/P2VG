@@ -25,10 +25,10 @@ def rank0_print(*args):
 class ModelArguments:
     version: Optional[str] = field(default="v0")
     model_name_or_path: Optional[str] = field(
-        default="google/gemma-3-4b-it",
+        default="google/medgemma-1.5-4b-it",
         metadata={"help": "Path to the LLM or MLLM."},
     )
-    model_type: Optional[str] = field(default=None, metadata={"help": "gemma3"})
+    model_type: Optional[str] = field(default="gemma3", metadata={"help": "gemma3"})
 
     freeze_backbone: bool = field(default=False)
     pretrain_mllm: Optional[str] = field(default=None)
@@ -52,12 +52,12 @@ class ModelArguments:
     vision_select_layer: Optional[int] = field(default=-1)
     vision_select_feature: Optional[str] = field(default="patch")
     pretrain_vision_model: str = field(
-        default=None, metadata={"help": "Path to pretrained model for ViT."}
+        default="/home/hoangnv/AICD_HA/SPINE_BASE/P2VG/weights/pretrained_ViT.bin", metadata={"help": "Path to pretrained model for ViT."}
     )
     freeze_vision_tower: bool = field(default=False)
 
     # axial
-    axt2_enable: bool = field(default=False)
+    axt2_enable: bool = field(default=True)
     axial_only: bool = field(default=False)
 
     # projector
@@ -83,7 +83,7 @@ class ModelArguments:
         metadata={"help": "Use a trainable 3D-ViT-to-MedGemma adapter before MedGemma's pretrained projector."},
     )
     freeze_medgemma_projection: bool = field(
-        default=True,
+        default=False,
         metadata={"help": "Freeze MedGemma pretrained projection/RMSNorm and train only the 768->1152 adapter."},
     )
 
@@ -91,7 +91,7 @@ class ModelArguments:
 @dataclass
 class DataArguments:
     data_root: str = field(
-        default="./Data/data/", metadata={"help": "Root directory for all data."}
+        default="/storage/hoangnv/dataset_lumbar_256", metadata={"help": "Root directory for all data."}
     )
 
     # caption data
@@ -102,13 +102,13 @@ class DataArguments:
 
     # caption data
     amos_train_cap_data_path: str = field(
-        default="./Data/data/M3D_Cap_npy/M3D_Cap.json",
+        default="/storage/hoangnv/dataset_lumbar_256/report/train.csv",
         metadata={"help": "Path to caption data."},
     )
 
     # caption data
     amos_validation_cap_data_path: str = field(
-        default="./Data/data/M3D_Cap_npy/M3D_Cap.json",
+        default="/storage/hoangnv/dataset_lumbar_256/report/val.csv",
         metadata={"help": "Path to amos caption data."},
     )
 
@@ -117,7 +117,7 @@ class DataArguments:
         metadata={"help": "Modality for sagittal images (t1, t2, fused)."}
     )
     udml_noise_enable: bool = field(
-        default=False,
+        default=True,
         metadata={"help": "Inject controlled Gaussian noise for UDML uncertainty supervision."},
     )
     udml_noise_prob: float = field(default=0.2)
@@ -172,7 +172,7 @@ class TrainingArguments(transformers.TrainingArguments):
     )
     remove_unused_columns: bool = field(default=False)
     model_max_length: int = field(
-        default=512,  # 512
+        default=768,
         metadata={
             "help": "Maximum sequence length. Sequences will be right padded (and possibly truncated)."
         },
@@ -183,29 +183,28 @@ class TrainingArguments(transformers.TrainingArguments):
 
     # This is set up to facilitate debugging, pls config these in bash file in training.
     bf16: bool = False
-    output_dir: str = "./output_gemma3"
-    num_train_epochs: float = 1
+    output_dir: str = "/storage/hoangnv/P2VG_outputs_dynamicfusion/dataset_lumbar/3006/medgemma_udml_stage2"
+    num_train_epochs: float = 15
     per_device_train_batch_size: int = 1
     per_device_eval_batch_size: int = 1
-    gradient_accumulation_steps: int = 1
-    eval_strategy: str = "steps"
+    gradient_accumulation_steps: int = 8
+    eval_strategy: str = "epoch"
     eval_accumulation_steps: int = 1
-    eval_steps: float = 0.04
-    save_strategy: str = "steps"
-    save_steps: int = 2000
-    save_total_limit: int = 2
-    load_best_model_at_end: bool = True
-    metric_for_best_model: str = "loss"
+    save_strategy: str = "no"
+    save_total_limit: int = 1
+    load_best_model_at_end: bool = False
+    metric_for_best_model: str = "eval_loss"
     greater_is_better: bool = False
-    learning_rate: float = 1e-4
-    weight_decay: float = 0.0
+    learning_rate: float = 3e-5
+    weight_decay: float = 0.01
     warmup_ratio: float = 0.03
     lr_scheduler_type: str = "cosine"
-    logging_steps: float = 10  # 0.001
-    gradient_checkpointing: bool = False  # train fast
-    dataloader_pin_memory: bool = True  # fast
-    dataloader_num_workers: int = 0
-    report_to: str = "tensorboard"
+    logging_strategy: str = "epoch"
+    gradient_checkpointing: bool = True
+    dataloader_pin_memory: bool = True
+    dataloader_num_workers: int = 4
+    report_to: str = "wandb"
+    deepspeed: str = "/home/hoangnv/AICD_HA/SPINE_BASE/P2VG/configs/ds_config_zero2.json"
 
 
 def compute_metrics(eval_preds):

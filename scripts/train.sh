@@ -18,14 +18,14 @@ export PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True
 export MPLCONFIGDIR="${MPLCONFIGDIR:-/tmp/matplotlib-$USER}"
 export CUDA_VISIBLE_DEVICES="${CUDA_VISIBLE_DEVICES:-0}"
 
-OUTPUT_SUFFIX="${1:-_spider_noaxial}"
+OUTPUT_SUFFIX="${1:-medgemma_udml}"
 TRAIN_STAGE="${TRAIN_STAGE:-both}"
 
-DEFAULT_DATA_ROOT="$P2VG_ROOT/dataset_pka"
-DEFAULT_SPLIT_ROOT="$P2VG_ROOT/dataset_pka"
+DEFAULT_DATA_ROOT="/storage/hoangnv/dataset_lumbar_256"
+DEFAULT_SPLIT_ROOT="/storage/hoangnv/dataset_lumbar_256"
 DATA_ROOT="${DATA_ROOT:-$DEFAULT_DATA_ROOT}"
 WEIGHTS_DIR="${WEIGHTS_DIR:-$P2VG_ROOT/weights}"
-OUTPUT_ROOT="${OUTPUT_ROOT:-/storage/hoangnv/P2VG_outputs_dynamicfusion/dataset_pka/v1}"
+OUTPUT_ROOT="${OUTPUT_ROOT:-/storage/hoangnv/P2VG_outputs_dynamicfusion/dataset_lumbar/3006}"
 PYTHON_BIN="${PYTHON_BIN:-$(which python 2>/dev/null || echo '')}"
 DEEPSPEED_BIN="${DEEPSPEED_BIN:-$(which deepspeed 2>/dev/null || echo '')}"
 if [ -z "$PYTHON_BIN" ]; then
@@ -50,13 +50,13 @@ fi
 
 export WANDB_PROJECT="${WANDB_PROJECT:-P2VG_SPINED}"
 USER_WANDB_NAME="${WANDB_NAME:-}"
-LORA_R="${LORA_R:-16}"
-LORA_ALPHA="${LORA_ALPHA:-64}"
-UDML_NOISE_PROB="${UDML_NOISE_PROB:-0.5}"
+LORA_R="${LORA_R:-8}"
+LORA_ALPHA="${LORA_ALPHA:-32}"
+UDML_NOISE_PROB="${UDML_NOISE_PROB:-0.2}"
 UDML_NOISE_MAX="${UDML_NOISE_MAX:-6}"
 AXT2_ENABLE="${AXT2_ENABLE:-True}"
 AXIAL_ONLY="${AXIAL_ONLY:-False}"
-SAGITTAL_MODALITY="${SAGITTAL_MODALITY:-t2}"
+SAGITTAL_MODALITY="${SAGITTAL_MODALITY:-fused}"
 # UDML_NOISE_ENABLE và UDML_LM_AUX_ENABLE được set per-stage trong run_stage()
 
 best_trainable_path() {
