@@ -25,12 +25,13 @@ MODEL_PATH="${MODEL_PATH:-$RUN_DIR/$MODEL_SUBDIR}"
 OUTPUT_DIR="${OUTPUT_DIR:-$RUN_DIR/eval}"
 PYTHON_BIN="${PYTHON_BIN:-$(which python 2>/dev/null || echo python)}"
 AXT2_ENABLE="${AXT2_ENABLE:-True}"
+AXIAL_ONLY="${AXIAL_ONLY:-False}"
 SAGITTAL_MODALITY="${SAGITTAL_MODALITY:-fused}"
 
 echo "Model     : $MODEL_PATH"
 echo "Val CSV   : $VAL_CSV"
 echo "Output    : $OUTPUT_DIR"
-echo "Image     : sagittal_modality=$SAGITTAL_MODALITY axt2_enable=$AXT2_ENABLE"
+echo "Image     : sagittal_modality=$SAGITTAL_MODALITY axt2_enable=$AXT2_ENABLE axial_only=$AXIAL_ONLY"
 
 if [ ! -d "$MODEL_PATH" ]; then
     echo "[ERR] MODEL_PATH does not exist: $MODEL_PATH" >&2
@@ -48,6 +49,9 @@ demo_cmd=(
 )
 if [ "$AXT2_ENABLE" = "True" ] || [ "$AXT2_ENABLE" = "true" ] || [ "$AXT2_ENABLE" = "1" ]; then
     demo_cmd+=(--axt2_enable)
+fi
+if [ "$AXIAL_ONLY" = "True" ] || [ "$AXIAL_ONLY" = "true" ] || [ "$AXIAL_ONLY" = "1" ]; then
+    demo_cmd+=(--axial_only)
 fi
 
 # Step 1: generate predictions

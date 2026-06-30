@@ -7,6 +7,7 @@ import torch.nn as nn
 from .multimodal_encoder.builder import build_vision_tower
 from .multimodal_projector.builder import build_mm_projector
 from .udml_fusion import UDMLFusion
+from .base_fusion import build_fusion
 
 
 class _LamedInnerModel(Protocol):
@@ -54,6 +55,7 @@ class LamedMetaModel:
         self.config.proj_pooling_type = model_args.proj_pooling_type
         self.config.proj_pooling_size = model_args.proj_pooling_size
         self.config.medgemma_adapter = getattr(model_args, "medgemma_adapter_enable", getattr(self.config, "medgemma_adapter", False))
+        self.config.fusion_type = getattr(model_args, "fusion_type", getattr(self.config, "fusion_type", "udml"))
         self.config.udml_var_loss_weight = getattr(model_args, "udml_var_loss_weight", 0.1)
         self.config.udml_lm_aux_enable = getattr(model_args, "udml_lm_aux_enable", False)
         self.config.udml_lm_aux_loss_weight = getattr(model_args, "udml_lm_aux_loss_weight", 1.0)
@@ -76,12 +78,18 @@ class LamedMetaModel:
                 
             if getattr(self, 'udml_fusion', None) is None:
                 udml_hidden_size = self.config.mm_hidden_size
-                self.udml_fusion = UDMLFusion(
-                    hidden_size=udml_hidden_size,
-                    var_loss_weight=self.config.udml_var_loss_weight,
-                    warmup_steps=getattr(self.config, "udml_warmup_steps", 0),
-                    depend_momentum=getattr(self.config, "udml_depend_momentum", 0.9),
-                )
+                fusion_type = str(getattr(self.config, "fusion_type", "udml")).lower()
+                # Baselines and UDML all bind to self.udml_fusion so every
+                # caller (model.udml_fusion(...), checkpoint save/load) is shared.
+                if fusion_type in ("udml", "", "none"):
+                    self.udml_fusion = UDMLFusion(
+                        hidden_size=udml_hidden_size,
+                        var_loss_weight=self.config.udml_var_loss_weight,
+                        warmup_steps=getattr(self.config, "udml_warmup_steps", 0),
+                        depend_momentum=getattr(self.config, "udml_depend_momentum", 0.9),
+                    )
+                else:
+                    self.udml_fusion = build_fusion(fusion_type, udml_hidden_size)
 
 
         if model_args.pretrain_vision_model is not None:

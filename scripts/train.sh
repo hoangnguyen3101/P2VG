@@ -21,8 +21,8 @@ export CUDA_VISIBLE_DEVICES="${CUDA_VISIBLE_DEVICES:-0}"
 OUTPUT_SUFFIX="${1:-medgemma_udml}"
 TRAIN_STAGE="${TRAIN_STAGE:-both}"
 
-DEFAULT_DATA_ROOT="/storage/hoangnv/dataset_lumbar_256"
-DEFAULT_SPLIT_ROOT="/storage/hoangnv/dataset_lumbar_256"
+DEFAULT_DATA_ROOT="/home/hoangnv/AICD_HA/dataset/Lumbar/dataset_lumbar_256"
+DEFAULT_SPLIT_ROOT="/home/hoangnv/AICD_HA/dataset/Lumbar/dataset_lumbar_256"
 DATA_ROOT="${DATA_ROOT:-$DEFAULT_DATA_ROOT}"
 WEIGHTS_DIR="${WEIGHTS_DIR:-$P2VG_ROOT/weights}"
 OUTPUT_ROOT="${OUTPUT_ROOT:-/storage/hoangnv/P2VG_outputs_dynamicfusion/dataset_lumbar/3006}"
@@ -56,6 +56,7 @@ UDML_NOISE_PROB="${UDML_NOISE_PROB:-0.2}"
 UDML_NOISE_MAX="${UDML_NOISE_MAX:-6}"
 AXT2_ENABLE="${AXT2_ENABLE:-True}"
 AXIAL_ONLY="${AXIAL_ONLY:-False}"
+FUSION_TYPE="${FUSION_TYPE:-udml}"
 SAGITTAL_MODALITY="${SAGITTAL_MODALITY:-fused}"
 # UDML_NOISE_ENABLE và UDML_LM_AUX_ENABLE được set per-stage trong run_stage()
 
@@ -122,6 +123,7 @@ run_stage() {
     echo "STAGE      : $stage"
     echo "LORA       : enable=$lora_enable r=$LORA_R alpha=$LORA_ALPHA"
     echo "IMAGE      : sagittal_modality=$SAGITTAL_MODALITY axt2_enable=$AXT2_ENABLE axial_only=$AXIAL_ONLY"
+    echo "FUSION     : $FUSION_TYPE"
     echo "MEDGEMMA   : freeze_projection=$freeze_projection freeze_vision_tower=$freeze_vision"
     echo "UDML_NOISE : enable=$udml_noise_enable prob=$UDML_NOISE_PROB max=$UDML_NOISE_MAX lm_aux=$udml_lm_aux_enable"
     if [ -n "$visual_ckpt" ]; then
@@ -140,6 +142,7 @@ run_stage() {
         --vision_tower vit3d
         --axt2_enable "$AXT2_ENABLE"
         --axial_only "$AXIAL_ONLY"
+        --fusion_type "$FUSION_TYPE"
         --freeze_vision_tower "$freeze_vision"
         --pretrain_vision_model "$WEIGHTS_DIR/pretrained_ViT.bin"
         --medgemma_adapter_enable True
@@ -212,6 +215,7 @@ run_stage() {
         --model_type gemma3 \
         --axt2_enable "$AXT2_ENABLE" \
         --axial_only "$AXIAL_ONLY" \
+        --fusion_type "$FUSION_TYPE" \
         --pretrain_vision_model "$WEIGHTS_DIR/pretrained_ViT.bin" \
         --medgemma_adapter_enable True \
         --mm_projector_type spp \

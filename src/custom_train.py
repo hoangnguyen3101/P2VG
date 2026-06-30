@@ -59,6 +59,10 @@ class ModelArguments:
     # axial
     axt2_enable: bool = field(default=True)
     axial_only: bool = field(default=False)
+    fusion_type: str = field(
+        default="udml",
+        metadata={"help": "Dual-encoder fusion: udml (default) | elementwise | concat | gate | bilinear."},
+    )
 
     # projector
     mm_projector_type: Optional[str] = field(default="spp", metadata={"help": "spp"})

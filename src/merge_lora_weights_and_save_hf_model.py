@@ -53,6 +53,10 @@ class ModelArguments:
     # axial (dual-encoder)
     axt2_enable: bool = field(default=False, metadata={"help": "Enable axial T2 dual encoder."})
     axial_only: bool = field(default=False, metadata={"help": "Use axial encoder only (no sagittal)."})
+    fusion_type: str = field(
+        default="udml",
+        metadata={"help": "Dual-encoder fusion: udml | elementwise | concat | gate | bilinear. Must match training."},
+    )
 
     # projector
     mm_projector_type: Optional[str] = field(default="spp")
