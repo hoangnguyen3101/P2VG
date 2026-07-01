@@ -61,7 +61,8 @@ def parse_args(args=None):
     parser.add_argument("--proj_out_num", type=int, default=256)
     parser.add_argument("--axt2_enable", action="store_true", default=False)
     parser.add_argument("--axial_only", action="store_true", default=False)
-    parser.add_argument("--sagittal_modality", type=str, default="t1", choices=["t1", "t2", "t1t2", "fused"])
+    parser.add_argument("--sagittal_modality", type=str, default="t1",
+                        help="Sagittal file suffix, e.g. sagt2, sagt1, fused (matches training).")
 
     return parser.parse_args(args)
 
