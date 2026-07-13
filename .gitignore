@@ -100,3 +100,4 @@ src/finetune_spider_fold5.sh
 src/monitor_fold3_then_fold5.sh
 src/monitor_gpu_then_train.sh
 src/pipeline_fold3_fold5.sh
+dataset_pka/

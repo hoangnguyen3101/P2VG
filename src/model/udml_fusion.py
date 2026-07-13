@@ -53,6 +53,11 @@ class UDMLFusion(nn.Module):
             nn.Dropout(0.1),
             nn.Linear(estimator_hidden, 1),
         )
+        # Learnable fusion backbone (as in the reference: the UDML weight is a
+        # *modulation* on top of a real fusion module, not the whole fusion).
+        # Reference: a_out, v_out, out = fusion_module(a + w_a*a, v + w_v*v).
+        from .base_fusion import GateFusion
+        self.fusion_backbone = GateFusion(hidden_size)
         self.var_loss_weight = var_loss_weight
         self.eps = eps
         self.warmup_steps = int(warmup_steps)
@@ -122,10 +127,13 @@ class UDMLFusion(nn.Module):
                 weight_ax = torch.ones_like(weight_ax)
             self._train_steps += 1
 
-        # (5) fuse, centered at the plain average (weights average to 1).
-        final_feat = 0.5 * (
-            weight_sag.unsqueeze(1) * feat_sag + weight_ax.unsqueeze(1) * feat_ax
-        )
+        # (5) Apply the weight as a RESIDUAL modulation (reference: a + w_a*a =
+        # (1+w_a)*a), then fuse through the learnable backbone. This keeps the
+        # base feature and lets a real fusion module combine the two streams,
+        # instead of a bare weighted average.
+        mod_sag = (1.0 + weight_sag).unsqueeze(1) * feat_sag
+        mod_ax = (1.0 + weight_ax).unsqueeze(1) * feat_ax
+        final_feat = self.fusion_backbone(mod_sag, mod_ax)
 
         self.last_aux = {
             "loss": feat_sag.new_zeros(()),
