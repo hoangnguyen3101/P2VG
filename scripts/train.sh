@@ -21,11 +21,11 @@ export CUDA_VISIBLE_DEVICES="${CUDA_VISIBLE_DEVICES:-0}"
 OUTPUT_SUFFIX="${1:-medgemma_udml}"
 TRAIN_STAGE="${TRAIN_STAGE:-both}"
 
-DEFAULT_DATA_ROOT="/home/hoangnv/AICD_HA/dataset/Lumbar/dataset_lumbar_256"
-DEFAULT_SPLIT_ROOT="/home/hoangnv/AICD_HA/dataset/Lumbar/dataset_lumbar_256"
+DEFAULT_DATA_ROOT="/storage/hoangnv/dataset_ttd_256"
+DEFAULT_SPLIT_ROOT="/storage/hoangnv/dataset_ttd_256"
 DATA_ROOT="${DATA_ROOT:-$DEFAULT_DATA_ROOT}"
 WEIGHTS_DIR="${WEIGHTS_DIR:-$P2VG_ROOT/weights}"
-OUTPUT_ROOT="${OUTPUT_ROOT:-/storage/hoangnv/P2VG_outputs_dynamicfusion/dataset_lumbar/3006}"
+OUTPUT_ROOT="${OUTPUT_ROOT:-/storage/hoangnv/P2VG_outputs_dynamicfusion/dataset_ttd_256/0709}"
 PYTHON_BIN="${PYTHON_BIN:-$(which python 2>/dev/null || echo '')}"
 DEEPSPEED_BIN="${DEEPSPEED_BIN:-$(which deepspeed 2>/dev/null || echo '')}"
 if [ -z "$PYTHON_BIN" ]; then
@@ -48,7 +48,7 @@ if [ ! -f "$WEIGHTS_DIR/pretrained_ViT.bin" ]; then
     exit 1
 fi
 
-export WANDB_PROJECT="${WANDB_PROJECT:-P2VG_SPINED}"
+export WANDB_PROJECT="${WANDB_PROJECT:-P2VG_Lumbar}"
 USER_WANDB_NAME="${WANDB_NAME:-}"
 LORA_R="${LORA_R:-8}"
 LORA_ALPHA="${LORA_ALPHA:-32}"
@@ -90,7 +90,7 @@ run_stage() {
         local udml_lm_aux_enable="${UDML_LM_AUX_ENABLE:-False}"
     elif [ "$stage" = "stage2" ]; then
         lora_enable="${LORA_ENABLE:-True}"
-        num_epochs="${STAGE2_EPOCHS:-${NUM_TRAIN_EPOCHS:-15}}"
+        num_epochs="${STAGE2_EPOCHS:-${NUM_TRAIN_EPOCHS:-6}}"
         lr="${STAGE2_LEARNING_RATE:-${LEARNING_RATE:-3e-5}}"
         freeze_projection="${FREEZE_MEDGEMMA_PROJECTION:-False}"
         freeze_vision="${STAGE2_FREEZE_VISION_TOWER:-${FREEZE_VISION_TOWER:-False}}"
@@ -124,6 +124,7 @@ run_stage() {
     echo "LORA       : enable=$lora_enable r=$LORA_R alpha=$LORA_ALPHA"
     echo "IMAGE      : sagittal_modality=$SAGITTAL_MODALITY axt2_enable=$AXT2_ENABLE axial_only=$AXIAL_ONLY"
     echo "FUSION     : $FUSION_TYPE"
+    echo "LR         : $lr${VISION_LR:+  (vision_lr=$VISION_LR)}"
     echo "MEDGEMMA   : freeze_projection=$freeze_projection freeze_vision_tower=$freeze_vision"
     echo "UDML_NOISE : enable=$udml_noise_enable prob=$UDML_NOISE_PROB max=$UDML_NOISE_MAX lm_aux=$udml_lm_aux_enable"
     if [ -n "$visual_ckpt" ]; then

@@ -719,6 +719,17 @@ class MyCallback(TrainerCallback):
                 f.write(f"step={state.global_step}\neval_loss={eval_loss}\n")
             print(f"New best eval_loss={eval_loss} at step={state.global_step}")
 
+        # Per-epoch trainable snapshot so we can pick a checkpoint BEFORE the
+        # generation collapse (eval_loss keeps dropping while output degenerates,
+        # so "best-by-loss" alone is misleading). Gated by env to avoid disk bloat.
+        if os.environ.get("SAVE_EACH_EPOCH", "0") in ("1", "true", "True"):
+            epoch = int(round(state.epoch)) if state.epoch is not None else state.global_step
+            snap_path = os.path.join(args.output_dir, f"model_trainable_epoch{epoch}.bin")
+            self._save_trainable(snap_path)
+            with open(os.path.join(args.output_dir, "epoch_eval_log.txt"), "a") as f:
+                f.write(f"epoch={epoch} step={state.global_step} eval_loss={eval_loss}\n")
+            print(f"Saved per-epoch snapshot: {snap_path} (eval_loss={eval_loss})")
+
         vl = self._trainer.get_eval_dataloader()
 
         self._trainer.model.eval()
